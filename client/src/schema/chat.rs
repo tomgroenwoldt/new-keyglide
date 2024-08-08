@@ -52,8 +52,9 @@ impl Chat {
                 self.input.pop();
             }
             KeyCode::Enter => {
-                self.message_tx
-                    .send(LobbyMessage::SendMessage(self.input.clone()))?;
+                self.message_tx.send(LobbyMessage::SendMessage {
+                    message: self.input.clone(),
+                })?;
                 self.input = String::new();
             }
             _ => {}
