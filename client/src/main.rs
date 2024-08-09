@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::Result;
+use app::Connection;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     crossterm::{
@@ -19,7 +20,6 @@ use crate::app::App;
 
 mod app;
 mod constants;
-mod editor;
 mod schema;
 mod tab;
 mod ui;
@@ -40,7 +40,7 @@ pub async fn run(tick_rate: Duration) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Create the app and run it.
-    let app = App::new(terminal.size()?);
+    let app = App::new(terminal.size()?).await?;
     let res = run_app(&mut terminal, app, tick_rate).await;
 
     // Restore the terminal.
@@ -66,7 +66,7 @@ async fn run_app<B: Backend>(
 ) -> Result<()> {
     let mut last_tick = Instant::now();
     while !app.exit {
-        terminal.draw(|f| ui::draw(f, &app))?;
+        terminal.draw(|f| ui::draw(f, &mut app))?;
 
         // Handle terminal events.
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
@@ -91,13 +91,20 @@ async fn run_app<B: Backend>(
 
         // Handle app messages sent from other tasks.
         if let Ok(msg) = app.message_rx.try_recv() {
-            app.handle_message(msg)?;
+            app.handle_message(msg).await?;
         }
 
         // Handle lobby messages.
-        if let Some(ref mut lobby) = app.lobby {
-            if let Ok(msg) = lobby.rx.try_recv() {
-                lobby.handle_message(msg).await?;
+        match app.connection {
+            Connection::Lobby(ref mut lobby) => {
+                if let Ok(msg) = lobby.rx.try_recv() {
+                    lobby.handle_message(msg).await?;
+                }
+            }
+            Connection::Join(ref mut join) => {
+                if let Ok(msg) = join.rx.try_recv() {
+                    join.handle_message(msg).await?;
+                }
             }
         }
 

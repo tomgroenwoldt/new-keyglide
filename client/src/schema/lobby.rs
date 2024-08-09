@@ -2,17 +2,17 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 use common::{BackendMessage, ClientMessage, Player};
-use fake::{faker::name::raw::Name, locales::EN, Fake};
 use futures_util::{stream::SplitSink, SinkExt, StreamExt};
 use tokio::{
     net::TcpStream,
-    sync::mpsc::{unbounded_channel, UnboundedReceiver},
+    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
 };
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
-use urlencoding::encode;
 use uuid::Uuid;
 
-use super::chat::Chat;
+use crate::app::AppMessage;
+
+use super::{chat::Chat, Encryption, EncryptionAction};
 
 pub enum LobbyMessage {
     CloseConnection,
@@ -20,34 +20,24 @@ pub enum LobbyMessage {
     PlayerJoined(Uuid, Player),
     PlayerLeft(Uuid),
     ReceiveMessage(String),
-    SendMessage(String),
+    SendMessage { message: String },
 }
 
 pub struct Lobby {
     pub players: BTreeMap<Uuid, Player>,
-    pub username: String,
     pub encryptions: BTreeMap<Uuid, Encryption>,
     pub chat: Chat,
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     pub rx: UnboundedReceiver<LobbyMessage>,
 }
 
-pub enum EncryptionAction {
-    Joined,
-    Left,
-}
-
-pub struct Encryption {
-    pub action: EncryptionAction,
-    pub index: usize,
-    pub name: String,
-}
-
 impl Lobby {
-    pub async fn new() -> Result<Self> {
-        let username: String = Name(EN).fake();
-        let encoded_name = encode(&username);
-        let (ws_stream, _) = connect_async(format!("ws://127.0.0.1:3030/{encoded_name}")).await?;
+    pub async fn new(app_tx: UnboundedSender<AppMessage>, lobby_id: Option<Uuid>) -> Result<Self> {
+        let mut url = String::from("ws://127.0.0.1:3030/play");
+        if let Some(lobby_id) = lobby_id {
+            url.push_str(&format!("/{}", lobby_id));
+        }
+        let (ws_stream, _) = connect_async(url).await?;
         let (ws_tx, mut ws_rx) = ws_stream.split();
 
         let (tx, rx) = unbounded_channel();
@@ -62,28 +52,35 @@ impl Lobby {
                             .send(LobbyMessage::CurrentPlayers(players))
                             .unwrap();
                     }
-                    BackendMessage::PlayerJoined(id, player) => {
-                        message_tx
-                            .send(LobbyMessage::PlayerJoined(id, player))
-                            .unwrap();
-                    }
-                    BackendMessage::PlayerLeft(id) => {
-                        message_tx.send(LobbyMessage::PlayerLeft(id)).unwrap();
-                    }
                     BackendMessage::CloseConnection => {
                         message_tx.send(LobbyMessage::CloseConnection).unwrap();
                     }
                     BackendMessage::SendMessage(msg) => {
                         message_tx.send(LobbyMessage::ReceiveMessage(msg)).unwrap();
                     }
+                    BackendMessage::AddPlayer(player_id, player) => {
+                        message_tx
+                            .send(LobbyMessage::PlayerJoined(player_id, player))
+                            .unwrap();
+                    }
+                    BackendMessage::RemovePlayer(player_id) => {
+                        message_tx
+                            .send(LobbyMessage::PlayerLeft(player_id))
+                            .unwrap();
+                    }
+                    BackendMessage::LobbyFull => {
+                        app_tx.send(AppMessage::LobbyFull).unwrap();
+                    }
                     BackendMessage::Unknown => {}
+                    BackendMessage::CurrentLobbies(_) => todo!(),
+                    BackendMessage::AddLobby(_, _) => todo!(),
+                    BackendMessage::RemoveLobby(_) => todo!(),
                 }
             }
         });
 
         Ok(Self {
             players: BTreeMap::new(),
-            username,
             encryptions: BTreeMap::new(),
             chat: Chat::new(tx),
             ws_tx,
@@ -94,30 +91,28 @@ impl Lobby {
     pub async fn handle_message(&mut self, msg: LobbyMessage) -> Result<()> {
         match msg {
             LobbyMessage::CloseConnection => {
+                dbg!("closing connection");
                 self.ws_tx.close().await?;
             }
             LobbyMessage::CurrentPlayers(players) => {
                 for (id, player) in players.iter() {
                     let encryption = Encryption {
+                        id: *id,
                         action: EncryptionAction::Joined,
                         index: 0,
-                        name: player.name.clone(),
+                        value: player.name.clone(),
                     };
                     self.encryptions.insert(*id, encryption);
                 }
                 self.players = players;
             }
             LobbyMessage::PlayerJoined(id, player) => {
-                let joined_player = if player.name.eq(&self.username) {
-                    "You"
-                } else {
-                    &player.name
-                };
-                self.chat.add_message(format!("{} joined!", joined_player));
+                self.chat.add_message(format!("{} joined!", player.name));
                 let encryption = Encryption {
+                    id,
                     action: EncryptionAction::Joined,
                     index: 0,
-                    name: player.name.clone(),
+                    value: player.name.clone(),
                 };
                 self.encryptions.insert(id, encryption);
                 self.players.insert(id, player);
@@ -127,7 +122,7 @@ impl Lobby {
                     self.chat.add_message(format!("{} left!", player.name));
                 }
                 if let Some(encryption) = self.encryptions.get_mut(&id) {
-                    encryption.index = encryption.name.len() - 1;
+                    encryption.index = encryption.value.len() - 1;
                     encryption.action = EncryptionAction::Left;
                 }
                 self.players.remove(&id);
@@ -135,9 +130,9 @@ impl Lobby {
             LobbyMessage::ReceiveMessage(msg) => {
                 self.chat.add_message(msg);
             }
-            LobbyMessage::SendMessage(msg) => {
+            LobbyMessage::SendMessage { message } => {
                 self.ws_tx
-                    .send(ClientMessage::SendMessage(msg).into())
+                    .send(ClientMessage::SendMessage { message }.into())
                     .await?;
             }
         }
@@ -150,12 +145,12 @@ impl Lobby {
         for (id, encryption) in self.encryptions.iter_mut() {
             match encryption.action {
                 EncryptionAction::Joined => {
-                    if encryption.index < encryption.name.len() {
+                    if encryption.index < encryption.value.len() {
                         encryption.index += 1;
                     }
                 }
                 EncryptionAction::Left => {
-                    if encryption.name.pop().is_none() {
+                    if encryption.value.pop().is_none() {
                         encryptions_to_delete.push(*id);
                     }
                 }
