@@ -7,7 +7,11 @@ use tokio::{
     net::TcpStream,
     sync::mpsc::{unbounded_channel, UnboundedReceiver},
 };
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{Error, Message},
+    MaybeTlsStream, WebSocketStream,
+};
 use uuid::Uuid;
 
 use common::{constants::MAX_LOBBY_SIZE, BackendMessage};
@@ -40,7 +44,7 @@ pub enum JoinMode {
 }
 
 impl Join {
-    pub async fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self, Error> {
         let (ws_stream, _) = connect_async("ws://127.0.0.1:3030/lobbies").await?;
         let (ws_tx, mut ws_rx) = ws_stream.split();
 

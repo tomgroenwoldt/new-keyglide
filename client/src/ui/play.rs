@@ -34,5 +34,6 @@ pub fn draw_play_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Connection::Join(ref join) => {
             draw_join(f, app, area, join);
         }
+        Connection::Offline => {}
     }
 }

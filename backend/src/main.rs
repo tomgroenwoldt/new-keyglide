@@ -3,7 +3,7 @@ use app::{
     App,
 };
 use tokio::sync::mpsc::unbounded_channel;
-use warp::Filter;
+use warp::{reply, Filter};
 
 use crate::routes::{clients, players};
 
@@ -21,11 +21,13 @@ async fn main() {
     let app = App::new(app_tx.clone(), app_rx);
     tokio::spawn(handle_app_message(app));
 
+    let health = warp::path("health").map(reply);
+
     // Build routes.
     let play_routes = players::routes(app_tx.clone());
     let client_routes = clients::routes(app_tx.clone());
 
     // Serve routes.
-    let routes = client_routes.or(play_routes);
+    let routes = health.or(client_routes.or(play_routes));
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 }
