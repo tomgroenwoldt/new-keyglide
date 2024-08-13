@@ -7,7 +7,7 @@ use ratatui::{
 };
 use strum::IntoEnumIterator;
 
-use crate::{app::App, constants::APP_TITLE, tab::Tab};
+use crate::{app::App, constants::APP_TITLE, schema::tab::Tab};
 
 pub fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     // Display all tabs in the header. Highlight the current selection.

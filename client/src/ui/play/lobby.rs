@@ -1,4 +1,3 @@
-use rand::{thread_rng, Rng};
 use ratatui::{
     layout::Rect,
     terminal::Frame,
@@ -6,22 +5,25 @@ use ratatui::{
 };
 
 use crate::{
-    constants::SYMBOLS,
-    schema::lobby::{Encryption, Lobby},
+    schema::{encryption::Encryption, lobby::Lobby},
+    ui::get_random_symbol,
 };
 
 pub fn draw_lobby(f: &mut Frame, area: Rect, lobby: &Lobby) {
-    let block = Block::bordered().title("Lobby");
+    let title = if let Some(ref name) = lobby.name {
+        name.as_str()
+    } else {
+        "Lobby"
+    };
+    let block = Block::bordered().title(title);
     let encrypted_names = lobby.encryptions.values().map(
         |Encryption {
              action: _,
              index,
-             name,
+             value,
          }| {
-            if name.eq(&lobby.username) {
-                return format!("{} (You)", name);
-            }
-            name.chars()
+            value
+                .chars()
                 .enumerate()
                 .map(|(i, c)| if i < *index { c } else { get_random_symbol() })
                 .collect::<String>()
@@ -29,10 +31,4 @@ pub fn draw_lobby(f: &mut Frame, area: Rect, lobby: &Lobby) {
     );
     let players = List::new(encrypted_names).block(block);
     f.render_widget(players, area);
-}
-
-fn get_random_symbol() -> char {
-    let mut rng = thread_rng();
-    let idx = rng.gen_range(0..SYMBOLS.len());
-    SYMBOLS.chars().nth(idx).unwrap()
 }

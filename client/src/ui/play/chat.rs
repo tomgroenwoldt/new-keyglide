@@ -6,8 +6,8 @@ use ratatui::{
 };
 
 use crate::{
-    app::{App, FocusedComponent},
-    schema::lobby::Lobby,
+    app::App,
+    schema::{focused_component::FocusedComponent, lobby::Lobby},
 };
 
 pub fn draw_chat(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {

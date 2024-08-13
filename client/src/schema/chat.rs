@@ -7,9 +7,8 @@ use ratatui::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::constants::CHAT_SIZE;
-
 use super::lobby::LobbyMessage;
+use crate::constants::CHAT_SIZE;
 
 pub struct Chat {
     messages: VecDeque<String>,
@@ -52,8 +51,9 @@ impl Chat {
                 self.input.pop();
             }
             KeyCode::Enter => {
-                self.message_tx
-                    .send(LobbyMessage::SendMessage(self.input.clone()))?;
+                self.message_tx.send(LobbyMessage::SendMessage {
+                    message: self.input.clone(),
+                })?;
                 self.input = String::new();
             }
             _ => {}

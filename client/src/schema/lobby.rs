@@ -2,88 +2,75 @@ use std::collections::BTreeMap;
 
 use anyhow::Result;
 use common::{BackendMessage, ClientMessage, Player};
-use fake::{faker::name::raw::Name, locales::EN, Fake};
-use futures_util::{stream::SplitSink, SinkExt, StreamExt};
+use futures_util::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use tokio::{
     net::TcpStream,
-    sync::mpsc::{unbounded_channel, UnboundedReceiver},
+    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
 };
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
-use urlencoding::encode;
 use uuid::Uuid;
 
-use super::chat::Chat;
+use super::{
+    chat::Chat,
+    encryption::{Encryption, EncryptionAction},
+    join::JoinMode,
+};
+use crate::app::AppMessage;
 
 pub enum LobbyMessage {
     CloseConnection,
     CurrentPlayers(BTreeMap<Uuid, Player>),
-    PlayerJoined(Uuid, Player),
+    PlayerJoined(Player),
     PlayerLeft(Uuid),
     ReceiveMessage(String),
-    SendMessage(String),
+    SendMessage { message: String },
+    SetLobbyName { name: String },
+    SetLocalPlayerId { id: Uuid },
 }
 
 pub struct Lobby {
+    pub name: Option<String>,
     pub players: BTreeMap<Uuid, Player>,
-    pub username: String,
     pub encryptions: BTreeMap<Uuid, Encryption>,
     pub chat: Chat,
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     pub rx: UnboundedReceiver<LobbyMessage>,
 }
 
-pub enum EncryptionAction {
-    Joined,
-    Left,
-}
-
-pub struct Encryption {
-    pub action: EncryptionAction,
-    pub index: usize,
-    pub name: String,
-}
-
 impl Lobby {
-    pub async fn new() -> Result<Self> {
-        let username: String = Name(EN).fake();
-        let encoded_name = encode(&username);
-        let (ws_stream, _) = connect_async(format!("ws://127.0.0.1:3030/{encoded_name}")).await?;
-        let (ws_tx, mut ws_rx) = ws_stream.split();
+    /// # Create new lobby connection
+    ///
+    /// Connects the player to the backend. Depending on `mode` creates or joins a lobby.
+    pub async fn new(app_tx: UnboundedSender<AppMessage>, mode: JoinMode) -> Result<Self> {
+        // Connect to lobby with given join mode.
+        let mut url = String::from("ws://127.0.0.1:3030/play");
+        match mode {
+            JoinMode::Quickplay => {
+                url.push_str("/quickplay");
+            }
+            JoinMode::Join(lobby_id) => {
+                url.push_str(&format!("/join/{}", lobby_id));
+            }
+            JoinMode::Create => {
+                url.push_str("/create");
+            }
+        };
+        let (ws_stream, _) = connect_async(url).await?;
 
+        // Setup messaging channels.
+        let (ws_tx, ws_rx) = ws_stream.split();
         let (tx, rx) = unbounded_channel();
 
+        // Spawn task to handle incoming backend messages.
         let message_tx = tx.clone();
-        tokio::spawn(async move {
-            while let Some(Ok(msg)) = ws_rx.next().await {
-                let backend_message: BackendMessage = msg.into();
-                match backend_message {
-                    BackendMessage::CurrentPlayers(players) => {
-                        message_tx
-                            .send(LobbyMessage::CurrentPlayers(players))
-                            .unwrap();
-                    }
-                    BackendMessage::PlayerJoined(id, player) => {
-                        message_tx
-                            .send(LobbyMessage::PlayerJoined(id, player))
-                            .unwrap();
-                    }
-                    BackendMessage::PlayerLeft(id) => {
-                        message_tx.send(LobbyMessage::PlayerLeft(id)).unwrap();
-                    }
-                    BackendMessage::CloseConnection => {
-                        message_tx.send(LobbyMessage::CloseConnection).unwrap();
-                    }
-                    BackendMessage::SendMessage(msg) => {
-                        message_tx.send(LobbyMessage::ReceiveMessage(msg)).unwrap();
-                    }
-                    BackendMessage::Unknown => {}
-                }
-            }
-        });
+        tokio::spawn(Lobby::handle_backend_message(ws_rx, message_tx, app_tx));
 
         Ok(Self {
+            name: None,
             players: BTreeMap::new(),
-            username,
             encryptions: BTreeMap::new(),
             chat: Chat::new(tx),
             ws_tx,
@@ -101,33 +88,28 @@ impl Lobby {
                     let encryption = Encryption {
                         action: EncryptionAction::Joined,
                         index: 0,
-                        name: player.name.clone(),
+                        value: player.name.clone(),
                     };
                     self.encryptions.insert(*id, encryption);
                 }
                 self.players = players;
             }
-            LobbyMessage::PlayerJoined(id, player) => {
-                let joined_player = if player.name.eq(&self.username) {
-                    "You"
-                } else {
-                    &player.name
-                };
-                self.chat.add_message(format!("{} joined!", joined_player));
+            LobbyMessage::PlayerJoined(player) => {
+                self.chat.add_message(format!("{} joined!", player.name));
                 let encryption = Encryption {
                     action: EncryptionAction::Joined,
                     index: 0,
-                    name: player.name.clone(),
+                    value: player.name.clone(),
                 };
-                self.encryptions.insert(id, encryption);
-                self.players.insert(id, player);
+                self.encryptions.insert(player.id, encryption);
+                self.players.insert(player.id, player);
             }
             LobbyMessage::PlayerLeft(id) => {
                 if let Some(player) = self.players.get_mut(&id) {
                     self.chat.add_message(format!("{} left!", player.name));
                 }
                 if let Some(encryption) = self.encryptions.get_mut(&id) {
-                    encryption.index = encryption.name.len() - 1;
+                    encryption.index = encryption.value.len() - 1;
                     encryption.action = EncryptionAction::Left;
                 }
                 self.players.remove(&id);
@@ -135,10 +117,60 @@ impl Lobby {
             LobbyMessage::ReceiveMessage(msg) => {
                 self.chat.add_message(msg);
             }
-            LobbyMessage::SendMessage(msg) => {
+            LobbyMessage::SendMessage { message } => {
                 self.ws_tx
-                    .send(ClientMessage::SendMessage(msg).into())
+                    .send(ClientMessage::SendMessage { message }.into())
                     .await?;
+            }
+            LobbyMessage::SetLobbyName { name } => {
+                self.name = Some(name);
+            }
+            LobbyMessage::SetLocalPlayerId { id } => {
+                if let Some(local_player) = self.encryptions.get_mut(&id) {
+                    local_player.value.push_str(" (you)");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn handle_backend_message(
+        mut ws_rx: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+        message_tx: UnboundedSender<LobbyMessage>,
+        app_tx: UnboundedSender<AppMessage>,
+    ) -> Result<()> {
+        while let Some(Ok(msg)) = ws_rx.next().await {
+            if msg.is_close() {
+                app_tx.send(AppMessage::DisconnectLobby)?;
+                break;
+            }
+            let backend_message: BackendMessage = msg.into();
+            match backend_message {
+                BackendMessage::ProvideLobbyName { name } => {
+                    message_tx.send(LobbyMessage::SetLobbyName { name })?;
+                }
+                BackendMessage::ProvidePlayerId { id } => {
+                    message_tx.send(LobbyMessage::SetLocalPlayerId { id })?;
+                }
+                BackendMessage::CurrentPlayers(players) => {
+                    message_tx.send(LobbyMessage::CurrentPlayers(players))?;
+                }
+                BackendMessage::CloseConnection => {
+                    message_tx.send(LobbyMessage::CloseConnection)?;
+                }
+                BackendMessage::SendMessage(msg) => {
+                    message_tx.send(LobbyMessage::ReceiveMessage(msg))?;
+                }
+                BackendMessage::AddPlayer(player) => {
+                    message_tx.send(LobbyMessage::PlayerJoined(player))?;
+                }
+                BackendMessage::RemovePlayer(player_id) => {
+                    message_tx.send(LobbyMessage::PlayerLeft(player_id))?;
+                }
+                BackendMessage::LobbyFull => {
+                    app_tx.send(AppMessage::DisconnectLobby)?;
+                }
+                _ => {}
             }
         }
         Ok(())
@@ -150,12 +182,12 @@ impl Lobby {
         for (id, encryption) in self.encryptions.iter_mut() {
             match encryption.action {
                 EncryptionAction::Joined => {
-                    if encryption.index < encryption.name.len() {
+                    if encryption.index < encryption.value.len() {
                         encryption.index += 1;
                     }
                 }
                 EncryptionAction::Left => {
-                    if encryption.name.pop().is_none() {
+                    if encryption.value.pop().is_none() {
                         encryptions_to_delete.push(*id);
                     }
                 }
