@@ -38,7 +38,7 @@ impl Editor {
         // Wait for the child to complete
         let mut child = pair.slave.spawn_command(cmd)?;
 
-        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut reader = pair.master.try_clone_reader()?;
 
         {
             let parser = Arc::clone(&parser);
@@ -48,13 +48,18 @@ impl Editor {
                 let mut buf = [0u8; 8192];
                 let mut processed_buf = Vec::new();
                 loop {
-                    let size = reader.read(&mut buf).unwrap();
+                    let size = reader
+                        .read(&mut buf)
+                        .expect("Unable to read from editor reader.");
                     if size == 0 {
                         break;
                     }
                     if size > 0 {
                         processed_buf.extend_from_slice(&buf[..size]);
-                        parser.lock().unwrap().process(&processed_buf);
+                        parser
+                            .lock()
+                            .expect("Unable to lock editor parser.")
+                            .process(&processed_buf);
 
                         // Clear the processed portion of the buffer
                         processed_buf.clear();
@@ -65,13 +70,15 @@ impl Editor {
 
         let (tx, mut rx) = unbounded_channel::<Bytes>();
 
-        let mut writer = BufWriter::new(pair.master.take_writer().unwrap());
+        let mut writer = BufWriter::new(pair.master.take_writer()?);
 
         // Drop writer on purpose
         tokio::spawn(async move {
             while let Some(bytes) = rx.recv().await {
-                writer.write_all(&bytes).unwrap();
-                writer.flush().unwrap();
+                writer
+                    .write_all(&bytes)
+                    .expect("Unable to write bytes to editor writer.");
+                writer.flush().expect("Unable to flush editor writer.");
             }
         });
 
@@ -141,7 +148,10 @@ impl Editor {
             ..Default::default()
         };
         self.master_pty.resize(pty_size)?;
-        self.parser.lock().unwrap().set_size(rows, cols);
+        self.parser
+            .lock()
+            .expect("Unable to lock editor parser.")
+            .set_size(rows, cols);
         Ok(())
     }
 }

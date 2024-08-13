@@ -1,11 +1,13 @@
+use rand::{thread_rng, Rng};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
     terminal::Frame,
 };
 
 use crate::{
-    app::{App, FocusedComponent},
-    tab::Tab,
+    app::App,
+    constants::SYMBOLS,
+    schema::{focused_component::FocusedComponent, tab::Tab},
 };
 
 use self::{exit::draw_exit, header::draw_header, play::draw_play_tab};
@@ -14,7 +16,10 @@ mod exit;
 mod header;
 mod play;
 
-pub fn draw(f: &mut Frame, app: &App) {
+/// # Draw the application
+///
+/// Draws the application. Divides the layout into a header and content field.
+pub fn draw(f: &mut Frame, app: &mut App) {
     // Split the layout into header and content.
     let chunks = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(f.size());
 
@@ -49,4 +54,10 @@ pub fn centered_rect(r: Rect, content_length: u16, content_height: u16) -> Rect 
     Layout::horizontal([Constraint::Length(horizontal_length)])
         .flex(Flex::Center)
         .split(popup_layout[0])[0]
+}
+
+pub fn get_random_symbol() -> char {
+    let mut rng = thread_rng();
+    let idx = rng.gen_range(0..SYMBOLS.len());
+    SYMBOLS.chars().nth(idx).unwrap()
 }
