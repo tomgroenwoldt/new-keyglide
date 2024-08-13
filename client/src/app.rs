@@ -11,9 +11,15 @@ use ratatui::{
     layout::Rect,
     Terminal,
 };
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::{
+    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    time::sleep,
+};
 
+#[cfg(feature = "audio")]
+use crate::audio::play_audio;
 use crate::{
+    constants::RECONNECT_DURATION,
     schema::{
         editor::Editor, focused_component::FocusedComponent, join::Join, lobby::Lobby, tab::Tab,
     },
@@ -39,24 +45,45 @@ pub struct App {
 pub enum Connection {
     Join(Join),
     Lobby(Lobby),
+    Offline,
 }
 
 impl Connection {
-    async fn new() -> Result<Self> {
-        let join = Join::new().await?;
-        Ok(Connection::Join(join))
+    /// # Create a new connection
+    ///
+    /// Tries to connect the client to the backend. If this fails it returns the
+    /// `Connection::Offline` variant and spawns a task that tries to reconnect
+    /// continously.
+    /// Notifies the application on a successful reconnect.
+    async fn new(app_tx: UnboundedSender<AppMessage>) -> Result<Self> {
+        let connection = match Join::new().await {
+            Ok(join) => Connection::Join(join),
+            Err(_) => {
+                tokio::spawn(async move {
+                    while reqwest::get("http://127.0.0.1:3030/health").await.is_err() {
+                        sleep(RECONNECT_DURATION).await;
+                    }
+                    app_tx
+                        .send(AppMessage::Reconnected)
+                        .expect("Unable to send via app channel.");
+                });
+                Connection::Offline
+            }
+        };
+        Ok(connection)
     }
 }
 
 pub enum AppMessage {
     EditorTerminated,
     DisconnectLobby,
+    Reconnected,
 }
 
 impl App {
     pub async fn new(area: Rect) -> Result<Self> {
         let (message_tx, message_rx) = unbounded_channel();
-        let connection = Connection::new().await?;
+        let connection = Connection::new(message_tx.clone()).await?;
         let app = App {
             current_tab: Tab::Home,
             editor: None,
@@ -117,6 +144,7 @@ impl App {
                         join.handle_message(msg).await?;
                     }
                 }
+                Connection::Offline => {}
             }
 
             // Handle application ticks. This is mainly used for handling
@@ -208,6 +236,7 @@ impl App {
                             }
                         }
                     }
+                    Connection::Offline => {}
                 }
             }
         };
@@ -226,6 +255,12 @@ impl App {
                     self.connection = Connection::Join(join);
                 }
             }
+            AppMessage::Reconnected => {
+                self.connection = Connection::new(self.message_tx.clone()).await?;
+
+                #[cfg(feature = "audio")]
+                play_audio("assets/back_online.mp3")?;
+            }
         }
         Ok(())
     }
@@ -238,6 +273,7 @@ impl App {
             Connection::Lobby(ref mut lobby) => {
                 lobby.on_tick();
             }
+            Connection::Offline => {}
         }
         Ok(())
     }

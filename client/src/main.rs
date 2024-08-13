@@ -14,6 +14,8 @@ use ratatui::{
 use crate::app::App;
 
 mod app;
+#[cfg(feature = "audio")]
+mod audio;
 mod constants;
 mod schema;
 mod ui;
