@@ -28,7 +28,7 @@ pub fn draw_offline(f: &mut Frame, offline: &Offline) {
         .map(Line::from)
         .collect::<Vec<_>>();
 
-    let area = centered_rect(f.size(), 30, 6);
+    let area = centered_rect(f.area(), 30, 6);
     let paragraph = Paragraph::new(lines).block(popup).wrap(Wrap { trim: true });
     f.render_widget(paragraph, area);
 }

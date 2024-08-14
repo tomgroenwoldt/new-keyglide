@@ -1,8 +1,8 @@
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Style},
-    terminal::Frame,
     widgets::{block::Title, Block},
+    Frame,
 };
 use tui_term::widget::PseudoTerminal;
 

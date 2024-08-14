@@ -8,7 +8,7 @@ use ratatui::{
         execute,
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     },
-    terminal::Terminal,
+    Terminal,
 };
 
 use crate::app::App;

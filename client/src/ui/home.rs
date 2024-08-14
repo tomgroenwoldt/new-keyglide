@@ -1,8 +1,8 @@
 use ratatui::{
     layout::Rect,
-    terminal::Frame,
     text::Line,
     widgets::{Block, Paragraph},
+    Frame,
 };
 
 use crate::{app::App, schema::connection::Connection};

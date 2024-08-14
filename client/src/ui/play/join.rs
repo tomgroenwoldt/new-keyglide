@@ -1,9 +1,9 @@
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Style},
-    terminal::Frame,
     text::Line,
     widgets::{block::Title, Block, List},
+    Frame,
 };
 
 use crate::{

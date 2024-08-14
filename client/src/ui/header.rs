@@ -1,9 +1,9 @@
 use ratatui::{
     layout::Rect,
     style::{Color, Style},
-    terminal::Frame,
     text::{self},
     widgets::{Block, Tabs},
+    Frame,
 };
 use strum::IntoEnumIterator;
 

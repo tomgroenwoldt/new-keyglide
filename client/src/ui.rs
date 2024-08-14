@@ -1,7 +1,7 @@
 use rand::{thread_rng, Rng};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
-    terminal::Frame,
+    Frame,
 };
 
 use self::{
@@ -38,7 +38,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 /// Draws the application. Divides the layout into a header and content field.
 pub fn draw_application(f: &mut Frame, app: &mut App) {
     // Split the layout into header and content.
-    let chunks = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(f.size());
+    let chunks = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(f.area());
 
     draw_header(f, app, chunks[0]);
 

@@ -9,7 +9,7 @@ use bytes::Bytes;
 use portable_pty::{CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
-    layout::Rect,
+    layout::Size,
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tui_term::vt100::Parser;
@@ -23,8 +23,8 @@ pub struct Editor {
 }
 
 impl Editor {
-    pub fn new(area: Rect, message_tx: UnboundedSender<AppMessage>) -> Result<Self> {
-        let parser = Arc::new(Mutex::new(Parser::new(area.height, area.width, 0)));
+    pub fn new(app_size: Size, message_tx: UnboundedSender<AppMessage>) -> Result<Self> {
+        let parser = Arc::new(Mutex::new(Parser::new(app_size.height, app_size.width, 0)));
         let pty_system = NativePtySystem::default();
         let cwd = std::env::current_dir().expect("Unable to access current working directory.");
         let mut cmd = CommandBuilder::new("helix");
@@ -87,7 +87,7 @@ impl Editor {
             master_pty: pair.master,
             parser,
         };
-        editor.resize(area.height, area.width)?;
+        editor.resize(app_size.height, app_size.width)?;
 
         // Spawn a task that messages the application after
         // our editor instance terminates.

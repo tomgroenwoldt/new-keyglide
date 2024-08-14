@@ -8,7 +8,7 @@ use ratatui::{
         self,
         event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     },
-    layout::Rect,
+    layout::Size,
     Terminal,
 };
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
@@ -28,7 +28,7 @@ pub struct App {
     /// An instance of the users default editor.
     pub editor: Option<Editor>,
     /// The current size of the terminal the application is running in.
-    pub area: Rect,
+    pub size: Size,
     pub message_tx: UnboundedSender<AppMessage>,
     pub message_rx: UnboundedReceiver<AppMessage>,
 
@@ -52,13 +52,13 @@ pub enum AppMessage {
 }
 
 impl App {
-    pub async fn new(area: Rect) -> Result<Self> {
+    pub async fn new(size: Size) -> Result<Self> {
         let (message_tx, message_rx) = unbounded_channel();
         let connection = Connection::new(message_tx.clone()).await?;
         let app = App {
             current_tab: Tab::Home,
             editor: None,
-            area,
+            size,
             message_tx,
             message_rx,
             connection,
@@ -176,7 +176,7 @@ impl App {
 
                             // If there is no editor running, start one.
                             if self.editor.is_none() {
-                                let new_editor = Editor::new(self.area, self.message_tx.clone())?;
+                                let new_editor = Editor::new(self.size, self.message_tx.clone())?;
                                 self.editor = Some(new_editor);
                             }
                         }
@@ -244,7 +244,7 @@ impl App {
                 if let Some(ref mut editor) = self.editor {
                     editor.resize(rows, cols)?;
                 }
-                self.area = terminal.size()?;
+                self.size = terminal.size()?;
             }
             _ => {}
         }

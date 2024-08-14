@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Constraint, Layout, Rect},
-    terminal::Frame,
+    Frame,
 };
 
 use self::{chat::draw_chat, editor::draw_editor, join::draw_join, lobby::draw_lobby};

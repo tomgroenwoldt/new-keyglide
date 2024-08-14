@@ -1,8 +1,8 @@
 use ratatui::{
     layout::{Alignment, Constraint, Layout, Margin, Rect},
     style::{Color, Style},
-    terminal::Frame,
     widgets::{block::Title, Block, Paragraph, Wrap},
+    Frame,
 };
 
 use crate::{

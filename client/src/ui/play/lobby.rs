@@ -1,7 +1,7 @@
 use ratatui::{
     layout::Rect,
-    terminal::Frame,
     widgets::{Block, List},
+    Frame,
 };
 
 use crate::{
