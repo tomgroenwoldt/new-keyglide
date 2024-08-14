@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+  "client",
+  "backend",
+  "common"
+]
+
+[workspace.dependencies]
+serde = { version = "1.0.207", features = ["derive"] }
