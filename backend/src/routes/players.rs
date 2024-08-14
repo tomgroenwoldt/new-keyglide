@@ -108,7 +108,7 @@ pub async fn handle_create(ws: WebSocket, app_tx: UnboundedSender<AppMessage>) {
         player.clone(),
     ));
 
-    if let Err(e) = app_tx.send(AppMessage::AddPlayerAndCreateLobby { player }) {
+    if let Err(e) = app_tx.send(AppMessage::CreateLobbyAndAddPlayer { player }) {
         error!("Error sending via app channel: {e}");
     }
 

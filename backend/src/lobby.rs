@@ -80,9 +80,10 @@ impl Lobby {
         let message = BackendMessage::AddPlayer(player.clone());
         self.broadcast(message)?;
 
-        // Tell non-connected clients about the new player taking up a seat in
-        // this lobby.
+        // Tell non-playing clients about the new player taking up a seat in
+        // this lobby and the update in connections.
         app_tx.send(AppMessage::SendLobbyInformation { lobby_id: self.id })?;
+        app_tx.send(AppMessage::SendConnectionCounts)?;
 
         // Tell the new player about all current players.
         app_tx.send(AppMessage::CurrentPlayers {
@@ -107,12 +108,12 @@ impl Lobby {
             let message = BackendMessage::RemovePlayer(player.id);
             self.broadcast(message)?;
 
-            // Tell connected clients about the lobby update.
+            // Tell non-playing clients about the free sear in this lobby and
+            // the update in connections.
             app_tx.send(AppMessage::SendLobbyInformation { lobby_id: self.id })?;
+            app_tx.send(AppMessage::SendConnectionCounts)?;
 
             // Now, if the lobby is empty, tell the app to remove this lobby.
-            // Otherwise, tell non-connected clients about the free seat in
-            // this lobby.
             if self.players.is_empty() {
                 let app_tx = app_tx.clone();
                 let lobby_id = self.id;

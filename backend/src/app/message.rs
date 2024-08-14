@@ -8,50 +8,44 @@ use common::{BackendMessage, Player};
 use super::App;
 
 pub enum AppMessage {
-    // Lobby messages.
-    CurrentPlayers {
-        lobby_id: Uuid,
-        player: Player,
-    },
-    AddPlayerAndCreateLobby {
-        player: Player,
-    },
-    AddPlayerViaQuickplay {
-        player: Player,
-    },
-    AddPlayerToLobby {
-        lobby_id: Uuid,
-        player: Player,
-    },
-    SendMessage {
-        player: Player,
-        message: String,
-    },
-    RemovePlayer {
-        player: Player,
-    },
+    /// Broadcasts all already connected players provided lobby to provided
+    /// player.
+    CurrentPlayers { lobby_id: Uuid, player: Player },
+    /// Creates a new lobby and adds provided player.
+    CreateLobbyAndAddPlayer { player: Player },
+    /// Adds provided player to an already existing lobby or creates a new lobby
+    /// if non exist.
+    AddPlayerViaQuickplay { player: Player },
+    /// Adds provided player to the lobby and broadcasts this information to
+    /// already connected players.
+    AddPlayerToLobby { lobby_id: Uuid, player: Player },
+    /// Broadcasts a message of provided player to all connected players.
+    SendMessage { player: Player, message: String },
+    /// Removes a player from the lobby and broadcasts this information to
+    /// already connected players.
+    RemovePlayer { player: Player },
+    /// Tells a player that the lobby he is trying to connect to is already
+    /// full.
     LobbyFull {
         player_tx: UnboundedSender<BackendMessage>,
     },
 
-    // Client messages.
-    CurrentLobbies {
-        client_id: Uuid,
-    },
-    SendLobbyInformation {
-        lobby_id: Uuid,
-    },
-    RemoveLobby {
-        lobby_id: Uuid,
-    },
-
+    /// Broadcasts all existing lobbies to a freshly connected client.
+    CurrentLobbies { client_id: Uuid },
+    /// Broadcasts name and player count of a lobby to all connected clients.
+    SendLobbyInformation { lobby_id: Uuid },
+    /// Removes an existing lobby.
+    RemoveLobby { lobby_id: Uuid },
+    /// Broadcasts the current amount of connected clients and players to all
+    /// connected clients.
+    SendConnectionCounts,
+    /// Adds a new client.
     AddClient {
         client_id: Uuid,
         client_tx: UnboundedSender<BackendMessage>,
     },
-    RemoveClient {
-        client_id: Uuid,
-    },
+    /// Removes an existing client.
+    RemoveClient { client_id: Uuid },
 }
 
 /// # Handle app message
@@ -67,7 +61,7 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                     error!("Lobby with ID {} was not found.", lobby_id);
                 }
             }
-            AppMessage::AddPlayerAndCreateLobby { player } => {
+            AppMessage::CreateLobbyAndAddPlayer { player } => {
                 app.add_player_to_new_lobby(player)?;
             }
             AppMessage::AddPlayerViaQuickplay { player } => {
@@ -134,6 +128,7 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 client_tx,
             } => {
                 app.clients.insert(client_id, client_tx);
+                app.tx.send(AppMessage::SendConnectionCounts)?;
                 info!(
                     "Added client with ID {}. {} client/clients connected.",
                     client_id,
@@ -142,11 +137,20 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
             }
             AppMessage::RemoveClient { client_id } => {
                 app.clients.remove(&client_id);
+                app.tx.send(AppMessage::SendConnectionCounts)?;
                 info!(
                     "Removed client with ID {}. {} client/clients remain.",
                     client_id,
                     app.clients.len()
                 );
+            }
+            AppMessage::SendConnectionCounts => {
+                let clients = app.clients.len();
+                let players = app.lobbies.values().map(|lobby| lobby.players.len()).sum();
+                let message = BackendMessage::ConnectionCounts { clients, players };
+                for client in app.clients.values() {
+                    client.send(message.clone())?;
+                }
             }
         }
     }

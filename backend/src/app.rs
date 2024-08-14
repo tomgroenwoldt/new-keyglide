@@ -15,7 +15,7 @@ pub(crate) mod message;
 
 #[derive(Debug)]
 pub struct App {
-    /// All connected clients that are not in a lobby.
+    /// All non-playing clients.
     pub clients: BTreeMap<Uuid, UnboundedSender<BackendMessage>>,
     /// All active lobbies.
     pub lobbies: BTreeMap<Uuid, Lobby>,

@@ -1,8 +1,8 @@
 use anyhow::Result;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 
-use super::join::Join;
-use crate::app::{App, Connection};
+use super::{connection::Connection, join::Join};
+use crate::app::App;
 
 #[derive(Clone)]
 pub enum FocusedComponent {

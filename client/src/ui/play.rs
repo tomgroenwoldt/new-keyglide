@@ -3,12 +3,8 @@ use ratatui::{
     terminal::Frame,
 };
 
-use crate::{
-    app::{App, Connection},
-    constants::CHAT_SIZE,
-};
-
 use self::{chat::draw_chat, editor::draw_editor, join::draw_join, lobby::draw_lobby};
+use crate::{app::App, constants::CHAT_SIZE, schema::connection::Connection};
 
 mod chat;
 mod editor;
@@ -34,6 +30,6 @@ pub fn draw_play_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Connection::Join(ref join) => {
             draw_join(f, app, area, join);
         }
-        Connection::Offline => {}
+        Connection::Offline(_) => {}
     }
 }

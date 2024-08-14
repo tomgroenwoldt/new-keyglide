@@ -69,6 +69,7 @@ pub enum BackendMessage {
     AddLobby(Uuid, Lobby),
     RemoveLobby(Uuid),
     LobbyFull,
+    ConnectionCounts { clients: usize, players: usize },
 
     ProvideLobbyName { name: String },
     ProvidePlayerId { id: Uuid },
