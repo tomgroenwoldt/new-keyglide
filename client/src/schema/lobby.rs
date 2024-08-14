@@ -141,8 +141,7 @@ impl Lobby {
     ) -> Result<()> {
         while let Some(Ok(msg)) = ws_rx.next().await {
             if msg.is_close() {
-                app_tx.send(AppMessage::DisconnectLobby)?;
-                break;
+                return Ok(());
             }
             let backend_message: BackendMessage = msg.into();
             match backend_message {
@@ -173,6 +172,10 @@ impl Lobby {
                 _ => {}
             }
         }
+
+        // We should only arrive here whenever the WS connection is abruptly
+        // closed. Therefore remove the current lobby here.
+        app_tx.send(AppMessage::DisconnectLobby)?;
         Ok(())
     }
 

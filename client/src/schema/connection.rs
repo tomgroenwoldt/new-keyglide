@@ -1,0 +1,30 @@
+use anyhow::Result;
+use tokio::sync::mpsc::UnboundedSender;
+
+use super::{join::Join, lobby::Lobby, offline::Offline};
+use crate::app::AppMessage;
+
+pub enum Connection {
+    Join(Join),
+    Lobby(Lobby),
+    Offline(Offline),
+}
+
+impl Connection {
+    /// # Create a new connection
+    ///
+    /// Tries to connect the client to the backend. If this fails it returns the
+    /// `Connection::Offline` variant and spawns a task that tries to reconnect
+    /// continously.
+    /// Notifies the application on a successful reconnect.
+    pub async fn new(app_tx: UnboundedSender<AppMessage>) -> Result<Self> {
+        let connection = match Join::new(app_tx.clone()).await {
+            Ok(join) => Connection::Join(join),
+            Err(_) => {
+                let offline = Offline::new(app_tx);
+                Connection::Offline(offline)
+            }
+        };
+        Ok(connection)
+    }
+}

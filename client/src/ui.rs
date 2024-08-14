@@ -1,26 +1,28 @@
 use rand::{thread_rng, Rng};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
-    style::{Color, Style},
     terminal::Frame,
-    widgets::{Block, Paragraph, Wrap},
 };
 
+use self::{
+    exit::draw_exit, header::draw_header, home::draw_home_tab, offline::draw_offline,
+    play::draw_play_tab,
+};
 use crate::{
-    app::{App, Connection},
+    app::App,
     constants::SYMBOLS,
-    schema::{focused_component::FocusedComponent, tab::Tab},
+    schema::{connection::Connection, focused_component::FocusedComponent, tab::Tab},
 };
-
-use self::{exit::draw_exit, header::draw_header, play::draw_play_tab};
 
 mod exit;
 mod header;
+mod home;
+mod offline;
 mod play;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
-    if let Connection::Offline = app.connection {
-        draw_offline(f);
+    if let Connection::Offline(ref offline) = app.connection {
+        draw_offline(f, offline);
     } else {
         draw_application(f, app);
     }
@@ -42,7 +44,7 @@ pub fn draw_application(f: &mut Frame, app: &mut App) {
 
     // Render content depending on the selected tab.
     match app.current_tab {
-        Tab::Home => {}
+        Tab::Home => draw_home_tab(f, app, chunks[1]),
         Tab::Play => draw_play_tab(f, app, chunks[1]),
     };
 }
@@ -70,15 +72,4 @@ pub fn get_random_symbol() -> char {
     let mut rng = thread_rng();
     let idx = rng.gen_range(0..SYMBOLS.len());
     SYMBOLS.chars().nth(idx).unwrap()
-}
-
-fn draw_offline(f: &mut Frame) {
-    let popup = Block::bordered()
-        .title("Service offline")
-        .border_style(Style::default().fg(Color::LightYellow));
-    let text = "It appears we are offline. You can keep this window open. We will try to reconnect automatically.";
-
-    let area = centered_rect(f.size(), 30, 4);
-    let paragraph = Paragraph::new(text).block(popup).wrap(Wrap { trim: true });
-    f.render_widget(paragraph, area);
 }

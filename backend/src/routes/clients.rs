@@ -53,7 +53,7 @@ pub async fn handle_connection(ws: WebSocket, app_tx: UnboundedSender<AppMessage
     }
 
     // If the client closes his WS connection this task will signal the app to
-    // remove him  from the current clients.
+    // remove him from the current clients.
     tokio::spawn(async move {
         while from_ws.next().await.is_some() {}
         if let Err(e) = app_tx.send(AppMessage::RemoveClient { client_id }) {

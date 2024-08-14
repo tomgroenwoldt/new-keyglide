@@ -1,11 +1,14 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use futures_util::{stream::SplitSink, SinkExt, StreamExt};
+use futures_util::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use tokio::{
     net::TcpStream,
-    sync::mpsc::{unbounded_channel, UnboundedReceiver},
+    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
 };
 use tokio_tungstenite::{
     connect_async,
@@ -17,13 +20,16 @@ use uuid::Uuid;
 use common::{constants::MAX_LOBBY_SIZE, BackendMessage};
 
 use super::{
+    connection::Connection,
     encryption::{Encryption, EncryptionAction},
     lobby::Lobby,
 };
-use crate::app::{App, Connection};
+use crate::app::{App, AppMessage};
 
 pub struct Join {
     pub lobbies: BTreeMap<Uuid, common::Lobby>,
+    pub total_clients: usize,
+    pub total_players: usize,
     pub selected_lobby: Option<Uuid>,
     pub encryptions: BTreeMap<Uuid, Encryption>,
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
@@ -35,6 +41,7 @@ pub enum JoinMessage {
     CloseConnection,
     AddLobby(Uuid, common::Lobby),
     RemoveLobby(Uuid),
+    ConnectionCounts { players: usize, clients: usize },
 }
 
 pub enum JoinMode {
@@ -44,35 +51,18 @@ pub enum JoinMode {
 }
 
 impl Join {
-    pub async fn new() -> Result<Self, Error> {
+    pub async fn new(app_tx: UnboundedSender<AppMessage>) -> Result<Self, Error> {
         let (ws_stream, _) = connect_async("ws://127.0.0.1:3030/lobbies").await?;
-        let (ws_tx, mut ws_rx) = ws_stream.split();
+        let (ws_tx, ws_rx) = ws_stream.split();
 
         let (tx, rx) = unbounded_channel();
         let message_tx = tx.clone();
-        tokio::spawn(async move {
-            while let Some(Ok(msg)) = ws_rx.next().await {
-                let backend_message: BackendMessage = msg.into();
-                match backend_message {
-                    BackendMessage::CloseConnection => {
-                        let _ = message_tx.send(JoinMessage::CloseConnection);
-                    }
-                    BackendMessage::CurrentLobbies(lobbies) => {
-                        let _ = message_tx.send(JoinMessage::CurrentLobbies(lobbies));
-                    }
-                    BackendMessage::AddLobby(lobby_id, lobby) => {
-                        let _ = message_tx.send(JoinMessage::AddLobby(lobby_id, lobby));
-                    }
-                    BackendMessage::RemoveLobby(lobby_id) => {
-                        let _ = message_tx.send(JoinMessage::RemoveLobby(lobby_id));
-                    }
-                    _ => {}
-                }
-            }
-        });
+        tokio::spawn(Join::handle_backend_message(ws_rx, message_tx, app_tx));
 
         Ok(Self {
             lobbies: BTreeMap::new(),
+            total_clients: 0,
+            total_players: 0,
             selected_lobby: None,
             encryptions: BTreeMap::new(),
             ws_tx,
@@ -186,7 +176,46 @@ impl Join {
                 }
                 self.lobbies.remove(&lobby_id);
             }
+            JoinMessage::ConnectionCounts { players, clients } => {
+                self.total_clients = clients;
+                self.total_players = players;
+            }
         }
+        Ok(())
+    }
+
+    pub async fn handle_backend_message(
+        mut ws_rx: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+        message_tx: UnboundedSender<JoinMessage>,
+        app_tx: UnboundedSender<AppMessage>,
+    ) -> Result<()> {
+        while let Some(Ok(msg)) = ws_rx.next().await {
+            if msg.is_close() {
+                return Ok(());
+            }
+            let backend_message: BackendMessage = msg.into();
+            match backend_message {
+                BackendMessage::CloseConnection => {
+                    let _ = message_tx.send(JoinMessage::CloseConnection);
+                    return Ok(());
+                }
+                BackendMessage::CurrentLobbies(lobbies) => {
+                    let _ = message_tx.send(JoinMessage::CurrentLobbies(lobbies));
+                }
+                BackendMessage::AddLobby(lobby_id, lobby) => {
+                    let _ = message_tx.send(JoinMessage::AddLobby(lobby_id, lobby));
+                }
+                BackendMessage::RemoveLobby(lobby_id) => {
+                    let _ = message_tx.send(JoinMessage::RemoveLobby(lobby_id));
+                }
+                BackendMessage::ConnectionCounts { clients, players } => {
+                    let _ = message_tx.send(JoinMessage::ConnectionCounts { clients, players });
+                }
+                _ => {}
+            }
+        }
+
+        app_tx.send(AppMessage::ServiceDisconnected)?;
         Ok(())
     }
 
