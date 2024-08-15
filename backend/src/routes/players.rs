@@ -14,9 +14,9 @@ use warp::{
     Filter,
 };
 
-use common::{BackendMessage, ClientMessage, Player};
+use common::{BackendMessage, ClientMessage};
 
-use crate::AppMessage;
+use crate::{player::Player, AppMessage};
 
 pub fn routes(
     app_tx: UnboundedSender<AppMessage>,

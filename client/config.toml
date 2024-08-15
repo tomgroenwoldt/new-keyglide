@@ -1,0 +1,95 @@
+# ──────────────────────────────────────────────────────────── #
+#                          Audio Section                       #
+# ──────────────────────────────────────────────────────────── #
+#    To use the audio feature, compile the client with the     #
+# "audio" feature. Users can define audio files by specifying  #
+#  paths to the files. These paths can be absolute, pointing   #
+#  to a specific location on the system, or relative to the    #
+#          binary that is running the application.             #
+# ──────────────────────────────────────────────────────────── #
+# Example:                                                     #
+#                                                              #
+#   [audio]                                                    #
+#   reconnected = "/home/tom/Music/okay-lets-go.mp3"           #
+#                                                              #
+# ──────────────────────────────────────────────────────────── #
+
+[audio]
+reconnected = "/home/tom/Downloads/oh-my-god-meme.mp3"
+
+# ──────────────────────────────────────────────────────────── #
+#                    Key Binding Configuration                 #
+# ──────────────────────────────────────────────────────────── #
+#   Each key binding has a required `code` and an optional     #
+#                       `modifiers` field.                     #
+# ──────────────────────────────────────────────────────────── #
+#                   Allowed values for `code`:                 #
+# ──────────────────────────────────────────────────────────── #
+#  - One character long strings, e.g., "h"                     #
+#  - "Enter",                                                  #
+#  - "Backspace",                                              #
+#  - "Left",                                                   #
+#  - "Right",                                                  #
+#  - "Up",                                                     #
+#  - "Down",                                                   #
+#  - "Home",                                                   #
+#  - "End",                                                    #
+#  - "PageUp",                                                 #
+#  - "PageDown",                                               #
+#  - "Tab",                                                    #
+#  - "BackTab",                                                #
+#  - "Delete",                                                 #
+#  - "Insert",                                                 #
+#  - "Null",                                                   #
+#  - "Esc",                                                    #
+#  - "CapsLock",                                               #
+#  - "ScrollLock",                                             #
+#  - "NumLock",                                                #
+#  - "PrintScreen",                                            #
+#  - "Pause",                                                  #
+#  - "Menu",                                                   #
+#  - "KeypadBegin",                                            #
+# ──────────────────────────────────────────────────────────── #
+#                Allowed fields for `modifiers`:               #
+# ──────────────────────────────────────────────────────────── #
+#  - "SHIFT"                                                   #
+#  - "CONTROL"                                                 #
+#  - "ALT"                                                     #
+#  - "SUPER"                                                   #
+#  - "HYPER"                                                   #
+#  - "META"                                                    #
+#  - "NONE"                                                    #
+# ──────────────────────────────────────────────────────────── #
+# Example:                                                     #
+#                                                              #
+#   [keybinding.movement]                                      #
+#   left  = { code = "h" }                                     #
+#   unfocus = { code = "q", modifiers = "CONTROL" }            #
+#                                                              #
+# ──────────────────────────────────────────────────────────── #
+
+[key-bindings.movement]
+left = { code = "h" }
+down = { code = "j" }
+right = { code = "l" }
+up = { code = "k" }
+
+[key-bindings.miscellaneous]
+unfocus = { code = "q", modifiers = "CONTROL" }
+chat = { code = "i" }
+editor = { code = "s" }
+
+[key-bindings.lobby]
+disconnect = { code = "d" }
+focus-chat = { code = "i" }
+focus-editor = { code = "s" }
+
+[key-bindings.join]
+focus-lobby-list = { code = "i" }
+join-selected = { code = "Enter" }
+quickplay = { code = "q" }
+create = { code = "n" }
+
+[key-bindings.popup]
+confirm = { code = "y" }
+abort = { code = "n" }
