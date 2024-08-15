@@ -1,6 +1,8 @@
-use std::{io, time::Duration};
+use std::io;
 
 use anyhow::Result;
+use args::Args;
+use clap::Parser;
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -14,14 +16,19 @@ use ratatui::{
 use crate::app::App;
 
 mod app;
+mod args;
 #[cfg(feature = "audio")]
 mod audio;
+mod config;
 mod constants;
 mod schema;
 mod ui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse arguments and configuration file.
+    let args = Args::parse();
+
     // Setup the terminal.
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -30,9 +37,8 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     // Create the app and run it.
-    let tick_rate = Duration::from_millis(35);
-    let mut app = App::new(terminal.size()?).await?;
-    let res = app.run(&mut terminal, tick_rate).await;
+    let mut app = App::new(args.config, terminal.size()?).await?;
+    let res = app.run(&mut terminal, args.tick_rate).await;
 
     // Restore the terminal after app termination.
     disable_raw_mode()?;

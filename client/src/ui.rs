@@ -29,7 +29,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Optionally, render an exit popup above the current content.
     if let Some(FocusedComponent::ExitPopup) = app.focused_component {
-        draw_exit(f);
+        draw_exit(f, &app.config);
     }
 }
 

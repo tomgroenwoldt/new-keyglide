@@ -9,12 +9,14 @@ audio = ["dep:rodio"]
 [dependencies]
 anyhow = "1.0.86"
 bytes = "1.7.1"
+clap = { version = "4.5.15", features = ["derive"] }
+client_derive = { path = "../client_derive" }
 common = { path = "../common", features = ["client"] }
+crossterm = { version = "0.28.1", features = ["serde"] }
 futures-util = "0.3.30"
-lazy_static = "1.5.0"
 portable-pty = "0.8.1"
 rand = "0.8.5"
-ratatui = "0.28.0"
+ratatui = { version = "0.28.0", features = ["serde"] }
 reqwest = "0.12.5"
 rodio = { version = "0.19.0", optional = true }
 serde = { workspace = true }

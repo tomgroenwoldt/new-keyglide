@@ -1,7 +1,7 @@
 use anyhow::Result;
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::KeyEvent;
 
-use super::{connection::Connection, join::Join};
+use super::connection::Connection;
 use crate::app::App;
 
 #[derive(Clone)]
@@ -26,24 +26,15 @@ impl FocusedComponent {
                 }
             }
             FocusedComponent::Lobbies => {
-                if let Connection::Join(_) = app.connection {
-                    // Unfortunately, we have to pass the whole app in this
-                    // function because the join component changes state
-                    // outside of its scope.
-                    Join::handle_key_event(app, key).await?;
+                if let Connection::Join(ref mut join) = app.connection {
+                    join.handle_key_event(&app.config, key).await?;
                 }
             }
             FocusedComponent::ExitPopup => {
-                if let KeyCode::Char(c) = key.code {
-                    match c {
-                        'y' => {
-                            app.exit = true;
-                        }
-                        'n' => {
-                            app.focused_component = None;
-                        }
-                        _ => {}
-                    }
+                if key.eq(&app.config.key_bindings.popup.confirm) {
+                    app.exit = true;
+                } else if key.eq(&app.config.key_bindings.popup.abort) {
+                    app.focused_component = None;
                 }
             }
         };

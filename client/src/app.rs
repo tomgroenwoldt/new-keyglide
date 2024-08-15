@@ -6,7 +6,7 @@ use ratatui::{
     backend::Backend,
     crossterm::{
         self,
-        event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
+        event::{self, Event, KeyEvent},
     },
     layout::Size,
     Terminal,
@@ -14,15 +14,18 @@ use ratatui::{
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 #[cfg(feature = "audio")]
-use crate::audio::play_audio;
+use crate::audio::{play_audio, Audio};
 use crate::{
+    config::Config,
     schema::{
-        connection::Connection, editor::Editor, focused_component::FocusedComponent, tab::Tab,
+        connection::Connection, editor::Editor, focused_component::FocusedComponent,
+        join::JoinMode, lobby::Lobby, tab::Tab,
     },
     ui,
 };
 
 pub struct App {
+    pub config: Config,
     /// The currently selected tab.
     pub current_tab: Tab,
     /// An instance of the users default editor.
@@ -42,6 +45,9 @@ pub enum AppMessage {
     // TODO: Move this into the lobby struct if it makes sense.
     /// Unsets the app's editor.
     EditorTerminated,
+    ConnectToLobby {
+        join_mode: JoinMode,
+    },
     /// Disconnects the client from the current lobby.
     DisconnectLobby,
     /// Signals the app that the backend connection was closed. The app tries
@@ -52,10 +58,11 @@ pub enum AppMessage {
 }
 
 impl App {
-    pub async fn new(size: Size) -> Result<Self> {
+    pub async fn new(config: Config, size: Size) -> Result<Self> {
         let (message_tx, message_rx) = unbounded_channel();
         let connection = Connection::new(message_tx.clone()).await?;
         let app = App {
+            config,
             current_tab: Tab::Home,
             editor: None,
             size,
@@ -119,59 +126,56 @@ impl App {
     }
 
     pub async fn on_key(&mut self, key: KeyEvent) -> Result<()> {
-        // CTRL + Q is the universal combination to unfocus components or quit
-        // the application if no component is focused.
-        if let KeyCode::Char('q') = key.code {
-            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                if self.focused_component.is_some() {
-                    self.focused_component = None;
-                } else {
-                    self.focused_component = Some(FocusedComponent::ExitPopup);
-                }
-                return Ok(());
+        // Unfocus component or quit the application if no component is focused.
+        if key.eq(&self.config.key_bindings.miscellaneous.unfocus) {
+            if self.focused_component.is_some() {
+                self.focused_component = None;
+            } else {
+                self.focused_component = Some(FocusedComponent::ExitPopup);
             }
+            return Ok(());
         }
 
         // Check whether there is a component focused. Such components receive
         // direct user input and take precedence.
         if let Some(focused_component) = self.focused_component.clone() {
             focused_component.handle_key(self, key).await?;
-        } else if let KeyCode::Char(c) = key.code {
+        } else {
             // First, handle general purpose key bindings.
-            match c {
-                'h' => self.on_left(),
-                'l' => self.on_right(),
+            if key.eq(&self.config.key_bindings.movement.left) {
+                self.on_left();
+            } else if key.eq(&self.config.key_bindings.movement.right) {
+                self.on_right();
+            } else {
                 // Then, handle key bindings per tab.
-                c => {
-                    self.handle_key_per_tab(c).await?;
-                }
-            };
+                self.handle_key_per_tab(key).await?;
+            }
         };
         Ok(())
     }
 
-    async fn handle_key_per_tab(&mut self, c: char) -> Result<()> {
+    async fn handle_key_per_tab(&mut self, key_event: KeyEvent) -> Result<()> {
         match self.current_tab {
             Tab::Home => {}
             Tab::Play => {
                 match self.connection {
                     Connection::Join(_) => {
-                        if c == 'i' {
+                        if key_event.eq(&self.config.key_bindings.join.focus_lobby_list) {
                             self.focused_component = Some(FocusedComponent::Lobbies);
                         }
                     }
                     Connection::Lobby(ref mut lobby) => {
                         // Disconnect from existing lobby.
-                        if c == 'd' {
+                        if key_event.eq(&self.config.key_bindings.lobby.disconnect) {
                             lobby.ws_tx.close().await?;
                             self.connection = Connection::new(self.message_tx.clone()).await?;
                         }
                         // Focus the chat.
-                        if c == 'i' {
+                        if key_event.eq(&self.config.key_bindings.lobby.focus_chat) {
                             self.focused_component = Some(FocusedComponent::Chat);
                         }
                         // Focus the editor.
-                        if c == 's' {
+                        if key_event.eq(&self.config.key_bindings.lobby.focus_editor) {
                             self.focused_component = Some(FocusedComponent::Editor);
 
                             // If there is no editor running, start one.
@@ -203,10 +207,15 @@ impl App {
                 self.connection = Connection::new(self.message_tx.clone()).await?;
 
                 #[cfg(feature = "audio")]
-                tokio::spawn(async { play_audio("assets/back_online.mp3") });
+                play_audio(&self.config, Audio::Reconnected)?;
             }
             AppMessage::ServiceDisconnected => {
                 self.connection = Connection::new(self.message_tx.clone()).await?;
+            }
+            AppMessage::ConnectToLobby { join_mode } => {
+                let lobby = Lobby::new(self.message_tx.clone(), join_mode).await?;
+                self.connection = Connection::Lobby(lobby);
+                self.focused_component = None;
             }
         }
         Ok(())

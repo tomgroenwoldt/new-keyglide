@@ -13,9 +13,10 @@ use crate::{
 };
 
 pub fn draw_join(f: &mut Frame, app: &App, area: Rect, join: &Join) {
+    let focus_lobby_key = format!("<{}>", app.config.key_bindings.join.focus_lobby_list.code);
     let mut block = Block::bordered()
         .title("Lobbies")
-        .title(Title::from("<i>").alignment(Alignment::Right));
+        .title(Title::from(focus_lobby_key).alignment(Alignment::Right));
 
     if let Some(FocusedComponent::Lobbies) = app.focused_component {
         block = block.border_style(Style::default().fg(Color::Green));

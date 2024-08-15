@@ -11,9 +11,10 @@ use crate::{
 };
 
 pub fn draw_chat(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
+    let focus_chat_key = format!("<{}>", app.config.key_bindings.lobby.focus_chat.code);
     let mut block = Block::bordered()
         .title("Chat")
-        .title(Title::from("<i>").alignment(Alignment::Right));
+        .title(Title::from(focus_chat_key).alignment(Alignment::Right));
     let mut input_text = format!("You: {}", lobby.chat.input.clone());
     let inner_chunks = Layout::vertical([Constraint::Min(0), Constraint::Length(2)]).split(area);
     if let Some(FocusedComponent::Chat) = app.focused_component {

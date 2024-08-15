@@ -5,7 +5,7 @@ use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::KeyEvent;
 use tokio::{
     net::TcpStream,
     sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -19,12 +19,8 @@ use uuid::Uuid;
 
 use common::{constants::MAX_LOBBY_SIZE, BackendMessage};
 
-use super::{
-    connection::Connection,
-    encryption::{Encryption, EncryptionAction},
-    lobby::Lobby,
-};
-use crate::app::{App, AppMessage};
+use super::encryption::{Encryption, EncryptionAction};
+use crate::{app::AppMessage, config::Config};
 
 pub struct Join {
     pub lobbies: BTreeMap<Uuid, common::Lobby>,
@@ -34,6 +30,7 @@ pub struct Join {
     pub encryptions: BTreeMap<Uuid, Encryption>,
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     pub rx: UnboundedReceiver<JoinMessage>,
+    pub app_tx: UnboundedSender<AppMessage>,
 }
 
 pub enum JoinMessage {
@@ -57,7 +54,11 @@ impl Join {
 
         let (tx, rx) = unbounded_channel();
         let message_tx = tx.clone();
-        tokio::spawn(Join::handle_backend_message(ws_rx, message_tx, app_tx));
+        tokio::spawn(Join::handle_backend_message(
+            ws_rx,
+            message_tx,
+            app_tx.clone(),
+        ));
 
         Ok(Self {
             lobbies: BTreeMap::new(),
@@ -67,70 +68,30 @@ impl Join {
             encryptions: BTreeMap::new(),
             ws_tx,
             rx,
+            app_tx,
         })
     }
 
-    pub async fn handle_key_event(app: &mut App, key: KeyEvent) -> Result<()> {
-        let Connection::Join(ref mut join) = app.connection else {
-            return Ok(());
-        };
-        match key.code {
-            // Join a selected lobby.
-            KeyCode::Enter => {
-                if let Some(selected_lobby) = join.selected_lobby {
-                    join.ws_tx.close().await?;
-                    let join_mode = JoinMode::Join(selected_lobby);
-                    let lobby = Lobby::new(app.message_tx.clone(), join_mode).await?;
-                    app.connection = Connection::Lobby(lobby);
-                    app.focused_component = None;
-                }
+    pub async fn handle_key_event(&mut self, config: &Config, key: KeyEvent) -> Result<()> {
+        // Join a selected lobby.
+        if key.eq(&config.key_bindings.join.join_selected) {
+            if let Some(selected_lobby) = self.selected_lobby {
+                self.ws_tx.close().await?;
+                let join_mode = JoinMode::Join(selected_lobby);
+                self.app_tx.send(AppMessage::ConnectToLobby { join_mode })?;
             }
-            KeyCode::Char(c) => match c {
-                'j' => {
-                    if let Some(lobby_id) = join.selected_lobby {
-                        join.selected_lobby = join
-                            .lobbies
-                            .range(lobby_id..)
-                            .nth(1)
-                            .or_else(|| join.lobbies.range(..=lobby_id).next())
-                            .map(|(id, _)| *id);
-                    } else {
-                        join.selected_lobby = join
-                            .lobbies
-                            .first_key_value()
-                            .map(|(lobby_id, _)| *lobby_id);
-                    }
-                }
-                'k' => {
-                    if let Some(lobby_id) = join.selected_lobby {
-                        join.selected_lobby = join
-                            .lobbies
-                            .range(..lobby_id)
-                            .next_back()
-                            .or_else(|| join.lobbies.iter().next_back())
-                            .map(|(lobby_id, _)| *lobby_id);
-                    } else {
-                        join.selected_lobby =
-                            join.lobbies.last_key_value().map(|(lobby_id, _)| *lobby_id);
-                    }
-                }
-                // Join lobby via quickplay.
-                'q' => {
-                    join.ws_tx.close().await?;
-                    let lobby = Lobby::new(app.message_tx.clone(), JoinMode::Quickplay).await?;
-                    app.connection = Connection::Lobby(lobby);
-                    app.focused_component = None;
-                }
-                // Create and join a new lobby.
-                'n' => {
-                    join.ws_tx.close().await?;
-                    let lobby = Lobby::new(app.message_tx.clone(), JoinMode::Create).await?;
-                    app.connection = Connection::Lobby(lobby);
-                    app.focused_component = None;
-                }
-                _ => {}
-            },
-            _ => {}
+        } else if key.eq(&config.key_bindings.movement.down) {
+            self.next_lobby_entry();
+        } else if key.eq(&config.key_bindings.movement.up) {
+            self.previous_lobby_entry();
+        } else if key.eq(&config.key_bindings.join.quickplay) {
+            self.ws_tx.close().await?;
+            let join_mode = JoinMode::Quickplay;
+            self.app_tx.send(AppMessage::ConnectToLobby { join_mode })?;
+        } else if key.eq(&config.key_bindings.join.create) {
+            self.ws_tx.close().await?;
+            let join_mode = JoinMode::Create;
+            self.app_tx.send(AppMessage::ConnectToLobby { join_mode })?;
         }
         Ok(())
     }
@@ -217,6 +178,43 @@ impl Join {
 
         app_tx.send(AppMessage::ServiceDisconnected)?;
         Ok(())
+    }
+
+    /// # Next lobby entry
+    ///
+    /// Selects the next lobby entry given an already selected lobby. Otherwise
+    /// select the first entry.
+    pub fn next_lobby_entry(&mut self) {
+        if let Some(lobby_id) = self.selected_lobby {
+            self.selected_lobby = self
+                .lobbies
+                .range(lobby_id..)
+                .nth(1)
+                .or_else(|| self.lobbies.range(..=lobby_id).next())
+                .map(|(id, _)| *id);
+        } else {
+            self.selected_lobby = self
+                .lobbies
+                .first_key_value()
+                .map(|(lobby_id, _)| *lobby_id);
+        }
+    }
+
+    /// # Previous lobby entry
+    ///
+    /// Selects the previous lobby entry given an already selected lobby. Otherwise
+    /// select the last entry.
+    pub fn previous_lobby_entry(&mut self) {
+        if let Some(lobby_id) = self.selected_lobby {
+            self.selected_lobby = self
+                .lobbies
+                .range(..lobby_id)
+                .next_back()
+                .or_else(|| self.lobbies.iter().next_back())
+                .map(|(lobby_id, _)| *lobby_id);
+        } else {
+            self.selected_lobby = self.lobbies.last_key_value().map(|(lobby_id, _)| *lobby_id);
+        }
     }
 
     pub fn on_tick(&mut self) {
