@@ -6,7 +6,7 @@ use uuid::Uuid;
 use common::BackendMessage;
 
 use super::App;
-use crate::lobby::Player;
+use crate::player::Player;
 
 pub enum AppMessage {
     /// Broadcasts all already connected players provided lobby to provided

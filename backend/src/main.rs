@@ -10,6 +10,7 @@ use crate::routes::{clients, players};
 mod app;
 mod constants;
 mod lobby;
+mod player;
 mod routes;
 
 #[tokio::main]

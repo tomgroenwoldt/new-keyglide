@@ -7,9 +7,8 @@ use uuid::Uuid;
 
 use common::{constants::MAX_LOBBY_SIZE, BackendMessage};
 
-use crate::lobby::{Lobby, Player};
-
 use self::message::AppMessage;
+use crate::{lobby::Lobby, player::Player};
 
 pub(crate) mod message;
 

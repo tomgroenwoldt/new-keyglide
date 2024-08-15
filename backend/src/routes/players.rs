@@ -16,7 +16,7 @@ use warp::{
 
 use common::{BackendMessage, ClientMessage};
 
-use crate::{lobby::Player, AppMessage};
+use crate::{player::Player, AppMessage};
 
 pub fn routes(
     app_tx: UnboundedSender<AppMessage>,

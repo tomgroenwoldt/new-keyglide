@@ -1,48 +1,20 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use fake::{
-    faker::{company::en::CompanyName, name::raw::Name},
-    locales::EN,
-    Fake,
-};
+use fake::{faker::company::en::CompanyName, Fake};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use common::{constants::MAX_LOBBY_SIZE, BackendMessage};
 
-use crate::{app::message::AppMessage, constants::EMPTY_LOBBY_LIFETIME};
+use crate::{app::message::AppMessage, constants::EMPTY_LOBBY_LIFETIME, player::Player};
 
 #[derive(Clone, Debug)]
 pub struct Lobby {
     pub id: Uuid,
     pub name: String,
     pub players: BTreeMap<Uuid, Player>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Player {
-    pub id: Uuid,
-    pub name: String,
-    pub tx: UnboundedSender<BackendMessage>,
-}
-
-impl Player {
-    pub fn new(tx: UnboundedSender<BackendMessage>) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            name: Name(EN).fake(),
-            tx,
-        }
-    }
-
-    pub fn to_common_player(&self) -> common::Player {
-        common::Player {
-            id: self.id,
-            name: self.name.clone(),
-        }
-    }
 }
 
 impl Default for Lobby {
