@@ -1,12 +1,16 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use fake::{faker::company::en::CompanyName, Fake};
+use fake::{
+    faker::{company::en::CompanyName, name::raw::Name},
+    locales::EN,
+    Fake,
+};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use common::{constants::MAX_LOBBY_SIZE, BackendMessage, Player};
+use common::{constants::MAX_LOBBY_SIZE, BackendMessage};
 
 use crate::{app::message::AppMessage, constants::EMPTY_LOBBY_LIFETIME};
 
@@ -15,6 +19,30 @@ pub struct Lobby {
     pub id: Uuid,
     pub name: String,
     pub players: BTreeMap<Uuid, Player>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Player {
+    pub id: Uuid,
+    pub name: String,
+    pub tx: UnboundedSender<BackendMessage>,
+}
+
+impl Player {
+    pub fn new(tx: UnboundedSender<BackendMessage>) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name: Name(EN).fake(),
+            tx,
+        }
+    }
+
+    pub fn to_common_player(&self) -> common::Player {
+        common::Player {
+            id: self.id,
+            name: self.name.clone(),
+        }
+    }
 }
 
 impl Default for Lobby {
@@ -77,7 +105,7 @@ impl Lobby {
         info!("Added player {} to lobby {}.", player.name, self.name);
 
         // Tell connected players about this new player.
-        let message = BackendMessage::AddPlayer(player.clone());
+        let message = BackendMessage::AddPlayer(player.to_common_player());
         self.broadcast(message)?;
 
         // Tell non-playing clients about the new player taking up a seat in
@@ -157,9 +185,11 @@ impl Lobby {
     /// Sends all already connected players to the specified player.
     pub fn send_current_players(&self, player: Player) -> Result<()> {
         if let Some(player) = self.players.get(&player.id) {
-            player
-                .tx
-                .send(BackendMessage::CurrentPlayers(self.players.clone()))?;
+            let mut players = BTreeMap::new();
+            for player in self.players.values() {
+                players.insert(player.id, player.to_common_player());
+            }
+            player.tx.send(BackendMessage::CurrentPlayers(players))?;
 
             // Tell the player about his own ID.
             player

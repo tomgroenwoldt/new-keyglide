@@ -1,10 +1,6 @@
 use std::collections::BTreeMap;
 
-#[cfg(feature = "backend")]
-use fake::{faker::name::raw::Name, locales::EN, Fake};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "backend")]
-use tokio::sync::mpsc::UnboundedSender;
 #[cfg(feature = "client")]
 use tokio_tungstenite::tungstenite::Message;
 use uuid::Uuid;
@@ -29,31 +25,18 @@ impl From<Message> for BackendMessage {
     fn from(value: Message) -> Self {
         match value {
             Message::Text(msg) => serde_json::from_str(&msg).unwrap(),
-            Message::Close(_) => BackendMessage::CloseConnection,
-            _ => BackendMessage::Unknown,
+            Message::Close(_) => Self::CloseConnection,
+            Message::Binary(_) | Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {
+                Self::Unknown
+            }
         }
     }
 }
 
-#[cfg_attr(feature = "client", derive(Deserialize))]
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Player {
     pub id: Uuid,
     pub name: String,
-    #[cfg(feature = "backend")]
-    #[serde(skip)]
-    pub tx: UnboundedSender<BackendMessage>,
-}
-
-#[cfg(feature = "backend")]
-impl Player {
-    pub fn new(tx: UnboundedSender<BackendMessage>) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            name: Name(EN).fake(),
-            tx,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

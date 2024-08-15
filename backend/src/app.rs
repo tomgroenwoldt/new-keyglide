@@ -5,9 +5,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::info;
 use uuid::Uuid;
 
-use common::{constants::MAX_LOBBY_SIZE, BackendMessage, Player};
+use common::{constants::MAX_LOBBY_SIZE, BackendMessage};
 
-use crate::lobby::Lobby;
+use crate::lobby::{Lobby, Player};
 
 use self::message::AppMessage;
 
@@ -98,7 +98,7 @@ impl App {
             if lobby.players.is_empty() {
                 if let Some(lobby) = self.lobbies.remove(&lobby_id) {
                     info!(
-                        "Removed lobby {} with {} remaning players. {} lobby/lobbies remain.",
+                        "Removed lobby {} with player count {}. Lobby count is {}.",
                         lobby.name,
                         lobby.players.len(),
                         self.lobbies.len(),

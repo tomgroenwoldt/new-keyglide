@@ -3,9 +3,10 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use common::{BackendMessage, Player};
+use common::BackendMessage;
 
 use super::App;
+use crate::lobby::Player;
 
 pub enum AppMessage {
     /// Broadcasts all already connected players provided lobby to provided
@@ -130,7 +131,7 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 app.clients.insert(client_id, client_tx);
                 app.tx.send(AppMessage::SendConnectionCounts)?;
                 info!(
-                    "Added client with ID {}. {} client/clients connected.",
+                    "Added client with ID {}. Client count is {}.",
                     client_id,
                     app.clients.len()
                 );
@@ -139,7 +140,7 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 app.clients.remove(&client_id);
                 app.tx.send(AppMessage::SendConnectionCounts)?;
                 info!(
-                    "Removed client with ID {}. {} client/clients remain.",
+                    "Removed client with ID {}. Client count is {}.",
                     client_id,
                     app.clients.len()
                 );
