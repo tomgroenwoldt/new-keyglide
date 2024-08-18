@@ -1,4 +1,5 @@
 use anyhow::Result;
+use log::debug;
 use ratatui::crossterm::event::KeyEvent;
 
 use super::connection::Connection;
@@ -13,7 +14,9 @@ pub enum FocusedComponent {
 }
 
 impl FocusedComponent {
-    pub async fn handle_key(&self, app: &mut App, key: KeyEvent) -> Result<()> {
+    pub async fn handle_key_event(&self, app: &mut App, key: KeyEvent) -> Result<()> {
+        debug!("Handle key event {:?}.", key);
+
         match self {
             FocusedComponent::Chat => {
                 if let Connection::Lobby(ref mut lobby) = app.connection {

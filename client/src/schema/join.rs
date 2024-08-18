@@ -5,6 +5,7 @@ use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
+use log::{debug, error, info};
 use ratatui::crossterm::event::KeyEvent;
 use tokio::{
     net::TcpStream,
@@ -33,6 +34,7 @@ pub struct Join {
     pub app_tx: UnboundedSender<AppMessage>,
 }
 
+#[derive(Debug)]
 pub enum JoinMessage {
     CurrentLobbies(BTreeMap<Uuid, common::Lobby>),
     CloseConnection,
@@ -41,6 +43,7 @@ pub enum JoinMessage {
     ConnectionCounts { players: usize, clients: usize },
 }
 
+#[derive(Debug)]
 pub enum JoinMode {
     Quickplay,
     Join(Uuid),
@@ -73,6 +76,8 @@ impl Join {
     }
 
     pub async fn handle_key_event(&mut self, config: &Config, key: KeyEvent) -> Result<()> {
+        debug!("Handle key event {:?}.", key);
+
         // Join a selected lobby.
         if key.eq(&config.key_bindings.join.join_selected) {
             if let Some(selected_lobby) = self.selected_lobby {
@@ -89,6 +94,8 @@ impl Join {
             let join_mode = JoinMode::Quickplay;
             self.app_tx.send(AppMessage::ConnectToLobby { join_mode })?;
         } else if key.eq(&config.key_bindings.join.create) {
+            debug!("Close client connection.");
+
             self.ws_tx.close().await?;
             let join_mode = JoinMode::Create;
             self.app_tx.send(AppMessage::ConnectToLobby { join_mode })?;
@@ -97,6 +104,8 @@ impl Join {
     }
 
     pub async fn handle_message(&mut self, msg: JoinMessage) -> Result<()> {
+        debug!("Handle message {:?}.", msg);
+
         match msg {
             JoinMessage::CurrentLobbies(lobbies) => {
                 for (id, lobby) in lobbies.iter() {
@@ -112,9 +121,15 @@ impl Join {
                 self.lobbies = lobbies;
             }
             JoinMessage::CloseConnection => {
+                info!("Close non-player connection.");
                 self.ws_tx.close().await?;
             }
             JoinMessage::AddLobby(lobby_id, lobby) => {
+                info!(
+                    "Update lobby list with lobby {} and {} players.",
+                    lobby.name, lobby.player_count
+                );
+
                 let value = format!("{} ({}/{})", lobby.name, lobby.player_count, MAX_LOBBY_SIZE);
                 let encryption = Encryption {
                     action: EncryptionAction::Joined,
@@ -135,7 +150,11 @@ impl Join {
                         self.selected_lobby = None;
                     }
                 }
-                self.lobbies.remove(&lobby_id);
+                if let Some(lobby) = self.lobbies.remove(&lobby_id) {
+                    info!("Remove lobby {} from lobby list.", lobby.name);
+                } else {
+                    error!("Tried to remove a non-existent lobby with ID {}.", lobby_id);
+                }
             }
             JoinMessage::ConnectionCounts { players, clients } => {
                 self.total_clients = clients;
@@ -151,6 +170,8 @@ impl Join {
         app_tx: UnboundedSender<AppMessage>,
     ) -> Result<()> {
         while let Some(Ok(msg)) = ws_rx.next().await {
+            debug!("Handle backend message {:?}.", msg);
+
             if msg.is_close() {
                 return Ok(());
             }
@@ -176,6 +197,9 @@ impl Join {
             }
         }
 
+        // We should only arrive here whenever the WS connection is abruptly
+        // closed. Therefore remove the current lobby here.
+        error!("Backend service disconnected!");
         app_tx.send(AppMessage::ServiceDisconnected)?;
         Ok(())
     }
@@ -185,19 +209,22 @@ impl Join {
     /// Selects the next lobby entry given an already selected lobby. Otherwise
     /// select the first entry.
     pub fn next_lobby_entry(&mut self) {
-        if let Some(lobby_id) = self.selected_lobby {
-            self.selected_lobby = self
-                .lobbies
+        let next_lobby_id = if let Some(lobby_id) = self.selected_lobby {
+            self.lobbies
                 .range(lobby_id..)
                 .nth(1)
                 .or_else(|| self.lobbies.range(..=lobby_id).next())
-                .map(|(id, _)| *id);
+                .map(|(id, _)| *id)
         } else {
-            self.selected_lobby = self
-                .lobbies
+            self.lobbies
                 .first_key_value()
-                .map(|(lobby_id, _)| *lobby_id);
-        }
+                .map(|(lobby_id, _)| *lobby_id)
+        };
+        debug!(
+            "Switch from lobby {:?} to next lobby {:?}.",
+            self.selected_lobby, next_lobby_id
+        );
+        self.selected_lobby = next_lobby_id;
     }
 
     /// # Previous lobby entry
@@ -205,16 +232,20 @@ impl Join {
     /// Selects the previous lobby entry given an already selected lobby. Otherwise
     /// select the last entry.
     pub fn previous_lobby_entry(&mut self) {
-        if let Some(lobby_id) = self.selected_lobby {
-            self.selected_lobby = self
-                .lobbies
+        let previous_lobby_id = if let Some(lobby_id) = self.selected_lobby {
+            self.lobbies
                 .range(..lobby_id)
                 .next_back()
                 .or_else(|| self.lobbies.iter().next_back())
-                .map(|(lobby_id, _)| *lobby_id);
+                .map(|(lobby_id, _)| *lobby_id)
         } else {
-            self.selected_lobby = self.lobbies.last_key_value().map(|(lobby_id, _)| *lobby_id);
-        }
+            self.lobbies.last_key_value().map(|(lobby_id, _)| *lobby_id)
+        };
+        debug!(
+            "Switch from lobby {:?} to previous lobby {:?}.",
+            self.selected_lobby, previous_lobby_id
+        );
+        self.selected_lobby = previous_lobby_id;
     }
 
     pub fn on_tick(&mut self) {

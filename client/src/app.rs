@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use futures_util::SinkExt;
+use log::debug;
 use ratatui::{
     backend::Backend,
     crossterm::{
@@ -41,6 +42,7 @@ pub struct App {
     pub exit: bool,
 }
 
+#[derive(Debug)]
 pub enum AppMessage {
     // TODO: Move this into the lobby struct if it makes sense.
     /// Unsets the app's editor.
@@ -139,7 +141,7 @@ impl App {
         // Check whether there is a component focused. Such components receive
         // direct user input and take precedence.
         if let Some(focused_component) = self.focused_component.clone() {
-            focused_component.handle_key(self, key).await?;
+            focused_component.handle_key_event(self, key).await?;
         } else {
             // First, handle general purpose key bindings.
             if key.eq(&self.config.key_bindings.movement.left) {
@@ -148,34 +150,34 @@ impl App {
                 self.on_right();
             } else {
                 // Then, handle key bindings per tab.
-                self.handle_key_per_tab(key).await?;
+                self.handle_key_event_per_tab(key).await?;
             }
         };
         Ok(())
     }
 
-    async fn handle_key_per_tab(&mut self, key_event: KeyEvent) -> Result<()> {
+    async fn handle_key_event_per_tab(&mut self, key: KeyEvent) -> Result<()> {
         match self.current_tab {
             Tab::Home => {}
             Tab::Play => {
                 match self.connection {
                     Connection::Join(_) => {
-                        if key_event.eq(&self.config.key_bindings.join.focus_lobby_list) {
+                        if key.eq(&self.config.key_bindings.join.focus_lobby_list) {
                             self.focused_component = Some(FocusedComponent::Lobbies);
                         }
                     }
                     Connection::Lobby(ref mut lobby) => {
                         // Disconnect from existing lobby.
-                        if key_event.eq(&self.config.key_bindings.lobby.disconnect) {
+                        if key.eq(&self.config.key_bindings.lobby.disconnect) {
                             lobby.ws_tx.close().await?;
                             self.connection = Connection::new(self.message_tx.clone()).await?;
                         }
                         // Focus the chat.
-                        if key_event.eq(&self.config.key_bindings.lobby.focus_chat) {
+                        if key.eq(&self.config.key_bindings.lobby.focus_chat) {
                             self.focused_component = Some(FocusedComponent::Chat);
                         }
                         // Focus the editor.
-                        if key_event.eq(&self.config.key_bindings.lobby.focus_editor) {
+                        if key.eq(&self.config.key_bindings.lobby.focus_editor) {
                             self.focused_component = Some(FocusedComponent::Editor);
 
                             // If there is no editor running, start one.
@@ -188,11 +190,14 @@ impl App {
                     Connection::Offline(_) => {}
                 }
             }
+            Tab::Logs => {}
         };
         Ok(())
     }
 
     pub async fn handle_message(&mut self, msg: AppMessage) -> Result<()> {
+        debug!("Handle message: {:?}.", msg);
+
         match msg {
             AppMessage::EditorTerminated => {
                 self.editor = None;
@@ -243,9 +248,9 @@ impl App {
         event: Event,
         terminal: &mut Terminal<B>,
     ) -> Result<()> {
+        debug!("Handle event {:?}.", event);
+
         match event {
-            // If the editor is running and focused it takes precedence over
-            // anything else.
             Event::Key(key) => {
                 self.on_key(key).await?;
             }

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use log::error;
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::{join::Join, lobby::Lobby, offline::Offline};
@@ -20,7 +21,9 @@ impl Connection {
     pub async fn new(app_tx: UnboundedSender<AppMessage>) -> Result<Self> {
         let connection = match Join::new(app_tx.clone()).await {
             Ok(join) => Connection::Join(join),
-            Err(_) => {
+            Err(e) => {
+                error!("Error connecting to backend service: {e}.");
+
                 let offline = Offline::new(app_tx);
                 Connection::Offline(offline)
             }
