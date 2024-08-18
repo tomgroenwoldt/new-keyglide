@@ -1,4 +1,7 @@
-use std::io;
+use std::{
+    io,
+    panic::{set_hook, take_hook},
+};
 
 use anyhow::Result;
 use args::Args;
@@ -27,6 +30,9 @@ mod ui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Make sure to restore the terminal state on app crashes.
+    init_panic_hook();
+
     // Parse arguments and configuration file.
     let args = Args::parse();
 
@@ -65,4 +71,19 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn restore_terminal() -> Result<()> {
+    disable_raw_mode()?;
+    execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
+    Ok(())
+}
+
+pub fn init_panic_hook() {
+    let original_hook = take_hook();
+    set_hook(Box::new(move |panic_info| {
+        // intentionally ignore errors here since we're already in a panic
+        let _ = restore_terminal();
+        original_hook(panic_info);
+    }));
 }
