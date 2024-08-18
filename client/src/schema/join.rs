@@ -25,8 +25,6 @@ use crate::{app::AppMessage, config::Config};
 
 pub struct Join {
     pub lobbies: BTreeMap<Uuid, common::Lobby>,
-    pub total_clients: usize,
-    pub total_players: usize,
     pub selected_lobby: Option<Uuid>,
     pub encryptions: BTreeMap<Uuid, Encryption>,
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
@@ -40,7 +38,6 @@ pub enum JoinMessage {
     CloseConnection,
     AddLobby(Uuid, common::Lobby),
     RemoveLobby(Uuid),
-    ConnectionCounts { players: usize, clients: usize },
 }
 
 #[derive(Debug)]
@@ -65,8 +62,6 @@ impl Join {
 
         Ok(Self {
             lobbies: BTreeMap::new(),
-            total_clients: 0,
-            total_players: 0,
             selected_lobby: None,
             encryptions: BTreeMap::new(),
             ws_tx,
@@ -156,10 +151,6 @@ impl Join {
                     error!("Tried to remove a non-existent lobby with ID {}.", lobby_id);
                 }
             }
-            JoinMessage::ConnectionCounts { players, clients } => {
-                self.total_clients = clients;
-                self.total_players = players;
-            }
         }
         Ok(())
     }
@@ -178,20 +169,20 @@ impl Join {
             let backend_message: BackendMessage = msg.into();
             match backend_message {
                 BackendMessage::CloseConnection => {
-                    let _ = message_tx.send(JoinMessage::CloseConnection);
+                    message_tx.send(JoinMessage::CloseConnection)?;
                     return Ok(());
                 }
                 BackendMessage::CurrentLobbies(lobbies) => {
-                    let _ = message_tx.send(JoinMessage::CurrentLobbies(lobbies));
+                    message_tx.send(JoinMessage::CurrentLobbies(lobbies))?;
                 }
                 BackendMessage::AddLobby(lobby_id, lobby) => {
-                    let _ = message_tx.send(JoinMessage::AddLobby(lobby_id, lobby));
+                    message_tx.send(JoinMessage::AddLobby(lobby_id, lobby))?;
                 }
                 BackendMessage::RemoveLobby(lobby_id) => {
-                    let _ = message_tx.send(JoinMessage::RemoveLobby(lobby_id));
+                    message_tx.send(JoinMessage::RemoveLobby(lobby_id))?;
                 }
                 BackendMessage::ConnectionCounts { clients, players } => {
-                    let _ = message_tx.send(JoinMessage::ConnectionCounts { clients, players });
+                    app_tx.send(AppMessage::ConnectionCounts { clients, players })?;
                 }
                 _ => {}
             }

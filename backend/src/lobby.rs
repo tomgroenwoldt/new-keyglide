@@ -81,8 +81,10 @@ impl Lobby {
         self.broadcast(message)?;
 
         // Tell non-playing clients about the new player taking up a seat in
-        // this lobby and the update in connections.
+        // this lobby.
         app_tx.send(AppMessage::SendLobbyInformation { lobby_id: self.id })?;
+
+        // Tell everyone about the update in connections.
         app_tx.send(AppMessage::SendConnectionCounts)?;
 
         // Tell the new player about all current players.
@@ -108,9 +110,10 @@ impl Lobby {
             let message = BackendMessage::RemovePlayer(player.id);
             self.broadcast(message)?;
 
-            // Tell non-playing clients about the free sear in this lobby and
-            // the update in connections.
+            // Tell non-playing clients about the free seat in this lobby.
             app_tx.send(AppMessage::SendLobbyInformation { lobby_id: self.id })?;
+
+            // Tell everyone about the update in connections.
             app_tx.send(AppMessage::SendConnectionCounts)?;
 
             // Now, if the lobby is empty, tell the app to remove this lobby.

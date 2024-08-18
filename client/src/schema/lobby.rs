@@ -184,6 +184,9 @@ impl Lobby {
                 BackendMessage::LobbyFull => {
                     app_tx.send(AppMessage::DisconnectLobby)?;
                 }
+                BackendMessage::ConnectionCounts { clients, players } => {
+                    app_tx.send(AppMessage::ConnectionCounts { clients, players })?;
+                }
                 _ => {}
             }
         }
