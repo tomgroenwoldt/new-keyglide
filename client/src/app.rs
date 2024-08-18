@@ -224,6 +224,8 @@ impl App {
                 play_audio(&self.config, Audio::Reconnected)?;
             }
             AppMessage::ServiceDisconnected => {
+                // Make sure to unfocus components on disconnect.
+                self.focused_component = None;
                 self.connection = Connection::new(self.message_tx.clone()).await?;
             }
             AppMessage::ConnectToLobby { join_mode } => {
