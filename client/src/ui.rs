@@ -40,17 +40,17 @@ pub fn draw_application(f: &mut Frame, app: &mut App) {
 
     draw_header(f, app, chunks[0]);
 
-    // If we are offline just draw the offline UI above everything else.
-    if let Connection::Offline(ref offline) = app.connection {
-        draw_offline(f, offline);
-    }
-
     // Render content depending on the selected tab.
     match app.current_tab {
         Tab::Home => draw_home_tab(f, app, chunks[1]),
         Tab::Play => draw_play_tab(f, app, chunks[1]),
         Tab::Logs => draw_logs_tab(f, chunks[1]),
     };
+
+    // If we are offline just draw the offline UI above everything else.
+    if let Connection::Offline(ref offline) = app.connection {
+        draw_offline(f, offline);
+    }
 }
 
 /// # Create a centered rectangle inside a given rectangle

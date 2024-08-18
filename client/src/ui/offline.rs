@@ -1,7 +1,7 @@
 use ratatui::{
     style::{Color, Style},
     text::Line,
-    widgets::{Block, Paragraph, Wrap},
+    widgets::{Block, Clear, Paragraph, Wrap},
     Frame,
 };
 
@@ -30,5 +30,8 @@ pub fn draw_offline(f: &mut Frame, offline: &Offline) {
 
     let area = centered_rect(f.area(), 30, 6);
     let paragraph = Paragraph::new(lines).block(popup).wrap(Wrap { trim: true });
+
+    // Clear the area for the offline UI.
+    f.render_widget(Clear, area);
     f.render_widget(paragraph, area);
 }
