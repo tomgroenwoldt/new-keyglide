@@ -15,6 +15,8 @@ pub struct Args {
     /// Path to a TOML configuration file.
     #[arg(short, long, value_parser = parse_config_from_file_path, default_value = "config.toml")]
     pub config: Config,
+    #[arg(short, long, value_parser = parse_config_from_file_path, default_value = "keyglide.logs")]
+    pub log: String,
 }
 
 fn parse_duration(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {

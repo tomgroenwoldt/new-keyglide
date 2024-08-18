@@ -27,8 +27,11 @@ mod ui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse arguments and configuration file.
+    let args = Args::parse();
+
     // Initialize the logger.
-    set_log_file("keyglide.logs")?;
+    set_log_file(&args.log)?;
     let drain = tui_logger::Drain::new();
     env_logger::Builder::from_default_env()
         .format(move |_, record| {
@@ -36,9 +39,6 @@ async fn main() -> Result<()> {
             Ok(())
         })
         .init();
-
-    // Parse arguments and configuration file.
-    let args = Args::parse();
 
     // Setup the terminal.
     enable_raw_mode()?;
