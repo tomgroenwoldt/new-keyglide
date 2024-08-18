@@ -16,13 +16,18 @@ pub fn draw_offline(f: &mut Frame, offline: &Offline) {
 
     // Calculate the amount of seconds that remain to start the reconnect.
     let since_last_reconnected = offline.last_reconnect.elapsed();
-    let reconnecting_in = RECONNECT_INTERVAL - since_last_reconnected;
-    let reconnect_status = &format!(
-        "Trying to reconnect in {}s{}",
-        reconnecting_in.as_secs(),
-        ".".repeat(offline.dot_count)
-    );
-
+    let reconnect_status =
+        if let Some(reconnecting_in) = RECONNECT_INTERVAL.checked_sub(since_last_reconnected) {
+            let millis = reconnecting_in.as_millis();
+            let seconds_with_millis = millis as f64 / 1000.0;
+            &format!(
+                "Trying to reconnect in {:.1}s{}",
+                seconds_with_millis,
+                ".".repeat(offline.dot_count)
+            )
+        } else {
+            &format!("Trying to reconnect{}", ".".repeat(offline.dot_count))
+        };
     let lines = [text, "", reconnect_status]
         .into_iter()
         .map(Line::from)
