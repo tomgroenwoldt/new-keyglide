@@ -37,8 +37,8 @@ pub enum AppMessage {
     SendLobbyInformation { lobby_id: Uuid },
     /// Removes an existing lobby.
     RemoveLobby { lobby_id: Uuid },
-    /// Broadcasts the current amount of connected clients and players to all
-    /// connected clients.
+    /// Broadcasts the current amount of connected clients and players to
+    /// clients and players.
     SendConnectionCounts,
     /// Adds a new client.
     AddClient {
@@ -149,8 +149,15 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 let clients = app.clients.len();
                 let players = app.lobbies.values().map(|lobby| lobby.players.len()).sum();
                 let message = BackendMessage::ConnectionCounts { clients, players };
+
+                // Send counts to all clients.
                 for client in app.clients.values() {
                     client.send(message.clone())?;
+                }
+
+                // Send counts to all players.
+                for lobby in app.lobbies.values() {
+                    lobby.broadcast(message.clone())?;
                 }
             }
         }

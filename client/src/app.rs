@@ -37,6 +37,9 @@ pub struct App {
     pub message_rx: UnboundedReceiver<AppMessage>,
 
     pub connection: Connection,
+    pub total_clients: usize,
+    pub total_players: usize,
+
     pub focused_component: Option<FocusedComponent>,
 
     pub exit: bool,
@@ -49,6 +52,10 @@ pub enum AppMessage {
     EditorTerminated,
     ConnectToLobby {
         join_mode: JoinMode,
+    },
+    ConnectionCounts {
+        players: usize,
+        clients: usize,
     },
     /// Disconnects the client from the current lobby.
     DisconnectLobby,
@@ -73,6 +80,8 @@ impl App {
             connection,
             focused_component: None,
             exit: false,
+            total_clients: 0,
+            total_players: 0,
         };
         Ok(app)
     }
@@ -221,6 +230,10 @@ impl App {
                 let lobby = Lobby::new(self.message_tx.clone(), join_mode).await?;
                 self.connection = Connection::Lobby(lobby);
                 self.focused_component = None;
+            }
+            AppMessage::ConnectionCounts { players, clients } => {
+                self.total_clients = clients;
+                self.total_players = players;
             }
         }
         Ok(())
