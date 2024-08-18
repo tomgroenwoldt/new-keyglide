@@ -6,6 +6,7 @@ use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
+use log::{debug, error, info};
 use tokio::{
     net::TcpStream,
     sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -20,6 +21,7 @@ use super::{
 };
 use crate::app::AppMessage;
 
+#[derive(Debug)]
 pub enum LobbyMessage {
     CloseConnection,
     CurrentPlayers(BTreeMap<Uuid, Player>),
@@ -79,8 +81,11 @@ impl Lobby {
     }
 
     pub async fn handle_message(&mut self, msg: LobbyMessage) -> Result<()> {
+        debug!("Handle message {:?}.", msg);
+
         match msg {
             LobbyMessage::CloseConnection => {
+                info!("Close connection to lobby.");
                 self.ws_tx.close().await?;
             }
             LobbyMessage::CurrentPlayers(players) => {
@@ -95,6 +100,8 @@ impl Lobby {
                 self.players = players;
             }
             LobbyMessage::PlayerJoined(player) => {
+                info!("Player {} joined the lobby.", player.name);
+
                 self.chat.add_message(format!("{} joined!", player.name));
                 let encryption = Encryption {
                     action: EncryptionAction::Joined,
@@ -105,14 +112,17 @@ impl Lobby {
                 self.players.insert(player.id, player);
             }
             LobbyMessage::PlayerLeft(id) => {
-                if let Some(player) = self.players.get_mut(&id) {
+                if let Some(player) = self.players.remove(&id) {
+                    info!("Player {} left the lobby.", player.name);
                     self.chat.add_message(format!("{} left!", player.name));
+                } else {
+                    error!("Tried to remove a non-existent player with ID {}.", id);
                 }
+
                 if let Some(encryption) = self.encryptions.get_mut(&id) {
                     encryption.index = encryption.value.len() - 1;
                     encryption.action = EncryptionAction::Left;
                 }
-                self.players.remove(&id);
             }
             LobbyMessage::ReceiveMessage(msg) => {
                 self.chat.add_message(msg);
@@ -123,9 +133,12 @@ impl Lobby {
                     .await?;
             }
             LobbyMessage::SetLobbyName { name } => {
+                debug!("Received lobby name {} from the backend.", name);
                 self.name = Some(name);
             }
             LobbyMessage::SetLocalPlayerId { id } => {
+                info!("Received clients player ID {} from the backend.", id);
+
                 if let Some(local_player) = self.encryptions.get_mut(&id) {
                     local_player.value.push_str(" (you)");
                 }
@@ -140,6 +153,8 @@ impl Lobby {
         app_tx: UnboundedSender<AppMessage>,
     ) -> Result<()> {
         while let Some(Ok(msg)) = ws_rx.next().await {
+            debug!("Handle backend message {:?}.", msg);
+
             if msg.is_close() {
                 return Ok(());
             }
@@ -175,6 +190,7 @@ impl Lobby {
 
         // We should only arrive here whenever the WS connection is abruptly
         // closed. Therefore remove the current lobby here.
+        error!("Backend service disconnected!");
         app_tx.send(AppMessage::DisconnectLobby)?;
         Ok(())
     }

@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use anyhow::Result;
+use log::debug;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     text::Line,
@@ -26,6 +27,7 @@ impl Chat {
     }
 
     pub fn add_message(&mut self, message: String) {
+        debug!("Add message {message} to chat.");
         self.messages.push_back(message);
 
         if self.messages.len() > CHAT_SIZE - 3 {
@@ -43,6 +45,8 @@ impl Chat {
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
+        debug!("Handle key event {:?}.", key);
+
         match key.code {
             KeyCode::Char(input) => {
                 self.input.push(input);

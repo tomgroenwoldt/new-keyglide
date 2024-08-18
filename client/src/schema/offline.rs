@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use log::{debug, error, info};
 use reqwest::{Client, StatusCode};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -28,11 +29,16 @@ impl Offline {
     }
 
     pub async fn try_reconnect(&self) -> Result<()> {
+        debug!("Try reconnect to backend service.");
+
         let Ok(response) = self.client.get("http://127.0.0.1:3030/health").send().await else {
+            error!("Backend service unreachable.");
+            // TODO: Return an error here.
             return Ok(());
         };
 
         if response.status() == StatusCode::OK {
+            info!("Backend service appears to be back online!");
             self.app_tx.send(AppMessage::ServiceBackOnline)?;
         }
         Ok(())

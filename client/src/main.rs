@@ -12,6 +12,7 @@ use ratatui::{
     },
     Terminal,
 };
+use tui_logger::set_log_file;
 
 use crate::app::App;
 
@@ -26,6 +27,16 @@ mod ui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize the logger.
+    set_log_file("keyglide.logs")?;
+    let drain = tui_logger::Drain::new();
+    env_logger::Builder::from_default_env()
+        .format(move |_, record| {
+            drain.log(record);
+            Ok(())
+        })
+        .init();
+
     // Parse arguments and configuration file.
     let args = Args::parse();
 

@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::Result;
 use bytes::Bytes;
+use log::{debug, warn};
 use portable_pty::{CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
@@ -93,6 +94,7 @@ impl Editor {
         // our editor instance terminates.
         tokio::spawn(async move {
             let _ = child.wait();
+            warn!("The editor process has completed.");
             message_tx
                 .send(AppMessage::EditorTerminated)
                 .expect("The message channel should not be closed");
@@ -140,6 +142,8 @@ impl Editor {
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
+        debug!("Resize editor to {} rows and {} columns.", rows, cols);
+
         let rows = rows - 5;
         let cols = ((cols - 2) as f64 * 0.8) as u16;
         let pty_size = PtySize {

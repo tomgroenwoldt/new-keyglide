@@ -1,3 +1,4 @@
+use logs::draw_logs_tab;
 use rand::{thread_rng, Rng};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
@@ -17,15 +18,12 @@ use crate::{
 mod exit;
 mod header;
 mod home;
+mod logs;
 mod offline;
 mod play;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
-    if let Connection::Offline(ref offline) = app.connection {
-        draw_offline(f, offline);
-    } else {
-        draw_application(f, app);
-    }
+    draw_application(f, app);
 
     // Optionally, render an exit popup above the current content.
     if let Some(FocusedComponent::ExitPopup) = app.focused_component {
@@ -42,10 +40,16 @@ pub fn draw_application(f: &mut Frame, app: &mut App) {
 
     draw_header(f, app, chunks[0]);
 
+    // If we are offline just draw the offline UI above everything else.
+    if let Connection::Offline(ref offline) = app.connection {
+        draw_offline(f, offline);
+    }
+
     // Render content depending on the selected tab.
     match app.current_tab {
         Tab::Home => draw_home_tab(f, app, chunks[1]),
         Tab::Play => draw_play_tab(f, app, chunks[1]),
+        Tab::Logs => draw_logs_tab(f, chunks[1]),
     };
 }
 

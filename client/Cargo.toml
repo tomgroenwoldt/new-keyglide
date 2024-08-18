@@ -13,7 +13,9 @@ clap = { version = "4.5.15", features = ["derive"] }
 client_derive = { path = "../client_derive" }
 common = { path = "../common", features = ["client"] }
 crossterm = { version = "0.28.1", features = ["serde"] }
+env_logger = "0.11.5"
 futures-util = "0.3.30"
+log = "0.4.22"
 portable-pty = "0.8.1"
 rand = "0.8.5"
 ratatui = { version = "0.28.0", features = ["serde"] }
@@ -25,5 +27,6 @@ strum = { version = "0.26.3", features = ["derive"] }
 tokio = { version = "1.38.1", features = ["full"] }
 tokio-tungstenite = "0.23.1"
 toml = "0.8.19"
+tui-logger = { version = "0.12.0", features = ["crossterm"] }
 tui-term = "0.1.13"
 uuid = "1.10.0"
