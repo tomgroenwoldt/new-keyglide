@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use common::{BackendMessage, ClientMessage, Player};
+use common::{BackendMessage, ChallengeFiles, ClientMessage, JoinMode, LobbyInformation, Player};
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
 use log::{debug, error, info};
+use ratatui::layout::Size;
 use tokio::{
     net::TcpStream,
     sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -16,50 +17,54 @@ use uuid::Uuid;
 
 use super::{
     chat::Chat,
+    editor::Editor,
     encryption::{Encryption, EncryptionAction},
-    join::JoinMode,
 };
-use crate::app::AppMessage;
+use crate::{app::AppMessage, schema::goal::Goal};
 
 #[derive(Debug)]
 pub enum LobbyMessage {
     CloseConnection,
-    CurrentPlayers(BTreeMap<Uuid, Player>),
+    EditorTerminated,
+    GoalTerminated,
     PlayerJoined(Player),
     PlayerLeft(Uuid),
     ReceiveMessage(String),
     SendMessage { message: String },
-    SetLobbyName { name: String },
     SetLocalPlayerId { id: Uuid },
 }
 
 pub struct Lobby {
-    pub name: Option<String>,
+    pub name: String,
     pub players: BTreeMap<Uuid, Player>,
     pub encryptions: BTreeMap<Uuid, Encryption>,
     pub chat: Chat,
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
+    pub tx: UnboundedSender<LobbyMessage>,
     pub rx: UnboundedReceiver<LobbyMessage>,
+    /// An instance of the users default editor with full interactivity.
+    pub editor: Editor,
+    /// An instance of the users default editor only capable of resizing.
+    pub goal: Goal,
+    pub size: Size,
+    pub challenge_files: ChallengeFiles,
 }
 
 impl Lobby {
     /// # Create new lobby connection
     ///
-    /// Connects the player to the backend. Depending on `mode` creates or joins a lobby.
-    pub async fn new(app_tx: UnboundedSender<AppMessage>, mode: JoinMode) -> Result<Self> {
+    /// Connects the player to the backend. Depending on `join_mode` creates or joins a lobby.
+    pub async fn new(
+        app_tx: UnboundedSender<AppMessage>,
+        join_mode: JoinMode,
+        size: Size,
+    ) -> Result<Self> {
+        // First, fetch lobby information of the lobby we want to join.
+        let url = format!("http://127.0.0.1:3030/lobbies/{}", join_mode);
+        let lobby_information = reqwest::get(url).await?.json::<LobbyInformation>().await?;
+
         // Connect to lobby with given join mode.
-        let mut url = String::from("ws://127.0.0.1:3030/play");
-        match mode {
-            JoinMode::Quickplay => {
-                url.push_str("/quickplay");
-            }
-            JoinMode::Join(lobby_id) => {
-                url.push_str(&format!("/join/{}", lobby_id));
-            }
-            JoinMode::Create => {
-                url.push_str("/create");
-            }
-        };
+        let url = format!("ws://127.0.0.1:3030/players/{}", lobby_information.id);
         let (ws_stream, _) = connect_async(url).await?;
 
         // Setup messaging channels.
@@ -68,15 +73,44 @@ impl Lobby {
 
         // Spawn task to handle incoming backend messages.
         let message_tx = tx.clone();
-        tokio::spawn(Lobby::handle_backend_message(ws_rx, message_tx, app_tx));
+        tokio::spawn(Lobby::handle_backend_message(
+            ws_rx,
+            message_tx,
+            app_tx.clone(),
+        ));
+
+        debug!("{:?}", lobby_information);
+
+        let mut encryptions = BTreeMap::new();
+        for (id, player) in lobby_information.players.iter() {
+            let encryption = Encryption {
+                action: EncryptionAction::Joined,
+                index: 0,
+                value: player.name.clone(),
+            };
+            encryptions.insert(*id, encryption);
+        }
 
         Ok(Self {
-            name: None,
-            players: BTreeMap::new(),
-            encryptions: BTreeMap::new(),
-            chat: Chat::new(tx),
+            name: lobby_information.name,
+            players: lobby_information.players,
+            encryptions,
+            chat: Chat::new(tx.clone()),
             ws_tx,
+            tx: tx.clone(),
             rx,
+            editor: Editor::new(
+                size,
+                tx.clone(),
+                lobby_information.challenge_files.start_file.clone(),
+            )?,
+            goal: Goal::new(
+                size,
+                tx,
+                lobby_information.challenge_files.goal_file.clone(),
+            )?,
+            size,
+            challenge_files: lobby_information.challenge_files,
         })
     }
 
@@ -87,17 +121,6 @@ impl Lobby {
             LobbyMessage::CloseConnection => {
                 info!("Close connection to lobby.");
                 self.ws_tx.close().await?;
-            }
-            LobbyMessage::CurrentPlayers(players) => {
-                for (id, player) in players.iter() {
-                    let encryption = Encryption {
-                        action: EncryptionAction::Joined,
-                        index: 0,
-                        value: player.name.clone(),
-                    };
-                    self.encryptions.insert(*id, encryption);
-                }
-                self.players = players;
             }
             LobbyMessage::PlayerJoined(player) => {
                 info!("Player {} joined the lobby.", player.name);
@@ -132,16 +155,28 @@ impl Lobby {
                     .send(ClientMessage::SendMessage { message }.into())
                     .await?;
             }
-            LobbyMessage::SetLobbyName { name } => {
-                debug!("Received lobby name {} from the backend.", name);
-                self.name = Some(name);
-            }
             LobbyMessage::SetLocalPlayerId { id } => {
                 info!("Received clients player ID {} from the backend.", id);
 
                 if let Some(local_player) = self.encryptions.get_mut(&id) {
                     local_player.value.push_str(" (you)");
                 }
+            }
+            LobbyMessage::EditorTerminated => {
+                // Restart the editor if it terminates.
+                self.editor = Editor::new(
+                    self.size,
+                    self.tx.clone(),
+                    self.challenge_files.start_file.clone(),
+                )?;
+            }
+            LobbyMessage::GoalTerminated => {
+                // Restart the goal editor if it terminates.
+                self.goal = Goal::new(
+                    self.size,
+                    self.tx.clone(),
+                    self.challenge_files.goal_file.clone(),
+                )?;
             }
         }
         Ok(())
@@ -160,14 +195,8 @@ impl Lobby {
             }
             let backend_message: BackendMessage = msg.into();
             match backend_message {
-                BackendMessage::ProvideLobbyName { name } => {
-                    message_tx.send(LobbyMessage::SetLobbyName { name })?;
-                }
                 BackendMessage::ProvidePlayerId { id } => {
                     message_tx.send(LobbyMessage::SetLocalPlayerId { id })?;
-                }
-                BackendMessage::CurrentPlayers(players) => {
-                    message_tx.send(LobbyMessage::CurrentPlayers(players))?;
                 }
                 BackendMessage::CloseConnection => {
                     message_tx.send(LobbyMessage::CloseConnection)?;
@@ -193,8 +222,13 @@ impl Lobby {
 
         // We should only arrive here whenever the WS connection is abruptly
         // closed. Therefore remove the current lobby here.
-        error!("Backend service disconnected!");
         app_tx.send(AppMessage::DisconnectLobby)?;
+        Ok(())
+    }
+
+    pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
+        self.goal.resize(rows, cols)?;
+        self.editor.resize(rows, cols)?;
         Ok(())
     }
 
@@ -217,6 +251,21 @@ impl Lobby {
         }
         for id in encryptions_to_delete {
             self.encryptions.remove(&id);
+        }
+    }
+
+    pub fn clean_up(&mut self) -> Result<()> {
+        self.goal.terminal.child_killer.kill()?;
+        self.editor.terminal.child_killer.kill()?;
+        Ok(())
+    }
+}
+
+// Make sure the terminal instances are killed whenever we drop a lobby.
+impl Drop for Lobby {
+    fn drop(&mut self) {
+        if let Err(e) = self.clean_up() {
+            error!("Error cleaning up lobby: {e}");
         }
     }
 }

@@ -1,11 +1,14 @@
-use app::{
-    message::{handle_app_message, AppMessage},
-    App,
-};
+use routes::lobbies;
 use tokio::sync::mpsc::unbounded_channel;
 use warp::{reply, Filter};
 
-use crate::routes::{clients, players};
+use crate::{
+    app::{
+        message::{handle_app_message, AppMessage},
+        App,
+    },
+    routes::{clients, players},
+};
 
 mod app;
 mod constants;
@@ -25,10 +28,11 @@ async fn main() {
     let health = warp::path("health").map(reply);
 
     // Build routes.
-    let play_routes = players::routes(app_tx.clone());
+    let player_routes = players::routes(app_tx.clone());
     let client_routes = clients::routes(app_tx.clone());
+    let lobby_routes = lobbies::routes(app_tx.clone());
 
     // Serve routes.
-    let routes = health.or(client_routes.or(play_routes));
+    let routes = health.or(client_routes.or(player_routes.or(lobby_routes)));
     warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
 }

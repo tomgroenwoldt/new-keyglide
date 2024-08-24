@@ -7,29 +7,29 @@ use ratatui::layout::Size;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-use super::terminal::Terminal;
-use crate::schema::lobby::LobbyMessage;
+use super::{lobby::LobbyMessage, terminal::Terminal};
 
-pub struct Editor {
+pub struct Goal {
     pub terminal: Terminal,
 }
 
-impl Editor {
-    /// # Create a new editor
+impl Goal {
+    /// # Create a new goal editor
     ///
-    /// Starts a new editor inside a PTY instance that opens up the start file
-    /// of the current lobby.
+    /// Starts a new editor inside a PTY instance that opens up the goal file of
+    /// the current lobby.
     pub fn new(
         app_size: Size,
         lobby_tx: UnboundedSender<LobbyMessage>,
-        start_file: Vec<u8>,
+        goal_file: Vec<u8>,
     ) -> Result<Self> {
         // Write the start file bytes to a file.
         let file_name = Uuid::new_v4();
         let file_path = format!("/tmp/{}", file_name);
-        fs::write(&file_path, start_file)?;
+        fs::write(&file_path, goal_file)?;
 
-        // Build the command that opens the new start file.
+        // Build the command that opens the goal file fetched from the backend
+        // service.
         let mut cmd = CommandBuilder::new("helix");
         let path = Path::new(&file_path);
         cmd.arg(path);
@@ -38,9 +38,7 @@ impl Editor {
         let (mut terminal, child) = Terminal::new(app_size, cmd)?;
         terminal.resize(app_size.height, app_size.width)?;
 
-        // Spawn a task that messages the application after our editor instance
-        // terminates and kills the terminal process on app close.
-        tokio::spawn(Editor::handle_termination(child, lobby_tx));
+        tokio::spawn(Goal::handle_termination(child, lobby_tx));
 
         Ok(Self { terminal })
     }
@@ -54,8 +52,8 @@ impl Editor {
         lobby_tx: UnboundedSender<LobbyMessage>,
     ) -> Result<()> {
         child.wait()?;
-        warn!("The editor process terminated.");
-        lobby_tx.send(LobbyMessage::EditorTerminated)?;
+        warn!("The goal process has completed.");
+        lobby_tx.send(LobbyMessage::GoalTerminated)?;
         Ok(())
     }
 

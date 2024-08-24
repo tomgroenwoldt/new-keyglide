@@ -3,10 +3,12 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use fake::{faker::company::en::CompanyName, Fake};
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use common::{constants::MAX_LOBBY_SIZE, BackendMessage};
+use common::{
+    constants::MAX_LOBBY_SIZE, BackendMessage, ChallengeFiles, LobbyInformation, LobbyListItem,
+};
 
 use crate::{app::message::AppMessage, constants::EMPTY_LOBBY_LIFETIME, player::Player};
 
@@ -15,14 +17,27 @@ pub struct Lobby {
     pub id: Uuid,
     pub name: String,
     pub players: BTreeMap<Uuid, Player>,
+    pub challenge_files: ChallengeFiles,
 }
 
 impl Default for Lobby {
     fn default() -> Self {
+        let start_file =
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/start.rs")).to_vec();
+        let goal_file =
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/goal.rs")).to_vec();
+
+        let challenge_files = ChallengeFiles {
+            start_file,
+            goal_file,
+        };
+        let id = Uuid::new_v4();
+        debug!("Lobby ID: {}", id);
         Self {
-            id: Uuid::new_v4(),
+            id,
             name: CompanyName().fake(),
             players: BTreeMap::new(),
+            challenge_files,
         }
     }
 }
@@ -38,10 +53,23 @@ impl Lobby {
         Ok(())
     }
 
-    pub fn to_common_lobby(&self) -> common::Lobby {
-        common::Lobby {
+    pub fn to_list_item(&self) -> LobbyListItem {
+        LobbyListItem {
             name: self.name.clone(),
             player_count: self.players.len(),
+        }
+    }
+
+    pub fn to_information(&self) -> LobbyInformation {
+        let mut players = BTreeMap::new();
+        for (id, player) in self.players.iter() {
+            players.insert(*id, player.to_common_player());
+        }
+        LobbyInformation {
+            id: self.id,
+            name: self.name.clone(),
+            players,
+            challenge_files: self.challenge_files.clone(),
         }
     }
 
@@ -67,11 +95,6 @@ impl Lobby {
             return Ok(());
         }
 
-        // Tell the player about the lobby name.
-        player.tx.send(BackendMessage::ProvideLobbyName {
-            name: self.name.clone(),
-        })?;
-
         // Insert the player into the player map.
         self.players.insert(player.id, player.clone());
         info!("Added player {} to lobby {}.", player.name, self.name);
@@ -82,16 +105,15 @@ impl Lobby {
 
         // Tell non-playing clients about the new player taking up a seat in
         // this lobby.
-        app_tx.send(AppMessage::SendLobbyInformation { lobby_id: self.id })?;
+        app_tx.send(AppMessage::SendLobbyListInformation { lobby_id: self.id })?;
 
         // Tell everyone about the update in connections.
         app_tx.send(AppMessage::SendConnectionCounts)?;
 
-        // Tell the new player about all current players.
-        app_tx.send(AppMessage::CurrentPlayers {
-            lobby_id: self.id,
-            player,
-        })?;
+        // Tell the player about his own ID.
+        player
+            .tx
+            .send(BackendMessage::ProvidePlayerId { id: player.id })?;
 
         Ok(())
     }
@@ -111,7 +133,7 @@ impl Lobby {
             self.broadcast(message)?;
 
             // Tell non-playing clients about the free seat in this lobby.
-            app_tx.send(AppMessage::SendLobbyInformation { lobby_id: self.id })?;
+            app_tx.send(AppMessage::SendLobbyListInformation { lobby_id: self.id })?;
 
             // Tell everyone about the update in connections.
             app_tx.send(AppMessage::SendConnectionCounts)?;
@@ -146,30 +168,6 @@ impl Lobby {
         if let Some(player) = self.players.get(&player.id) {
             let message = BackendMessage::SendMessage(format!("{}: {message}", player.name));
             self.broadcast(message)?;
-        } else {
-            error!(
-                "Player {} was not found in lobby {}.",
-                player.name, self.name
-            );
-        }
-        Ok(())
-    }
-
-    /// # Send current players
-    ///
-    /// Sends all already connected players to the specified player.
-    pub fn send_current_players(&self, player: Player) -> Result<()> {
-        if let Some(player) = self.players.get(&player.id) {
-            let mut players = BTreeMap::new();
-            for player in self.players.values() {
-                players.insert(player.id, player.to_common_player());
-            }
-            player.tx.send(BackendMessage::CurrentPlayers(players))?;
-
-            // Tell the player about his own ID.
-            player
-                .tx
-                .send(BackendMessage::ProvidePlayerId { id: player.id })?;
         } else {
             error!(
                 "Player {} was not found in lobby {}.",

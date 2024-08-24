@@ -6,6 +6,7 @@ use std::{
 use anyhow::Result;
 use args::Args;
 use clap::Parser;
+use env_logger::Env;
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
@@ -39,7 +40,7 @@ async fn main() -> Result<()> {
     // Initialize the logger.
     set_log_file(&args.log)?;
     let drain = tui_logger::Drain::new();
-    env_logger::Builder::from_default_env()
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .format(move |_, record| {
             drain.log(record);
             Ok(())
@@ -82,7 +83,7 @@ pub fn restore_terminal() -> Result<()> {
 pub fn init_panic_hook() {
     let original_hook = take_hook();
     set_hook(Box::new(move |panic_info| {
-        // intentionally ignore errors here since we're already in a panic
+        // We can ignore this result as we are already inside a panic.
         let _ = restore_terminal();
         original_hook(panic_info);
     }));

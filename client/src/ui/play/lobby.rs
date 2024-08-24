@@ -10,11 +10,7 @@ use crate::{
 };
 
 pub fn draw_lobby(f: &mut Frame, area: Rect, lobby: &Lobby) {
-    let title = if let Some(ref name) = lobby.name {
-        name.as_str()
-    } else {
-        "Lobby"
-    };
+    let title = lobby.name.as_str();
     let block = Block::bordered().title(title);
     let encrypted_names = lobby.encryptions.values().map(
         |Encryption {

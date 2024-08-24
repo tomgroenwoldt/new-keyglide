@@ -18,7 +18,7 @@ pub fn routes(
     let app_tx = warp::any().map(move || app_tx.clone());
 
     // Setup client routes.
-    warp::path("lobbies")
+    warp::path("clients")
         .and(warp::ws())
         .and(app_tx.clone())
         .map(|ws: warp::ws::Ws, app_tx: UnboundedSender<AppMessage>| {
