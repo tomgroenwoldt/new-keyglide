@@ -81,8 +81,8 @@ editor = { code = "s" }
 
 [key-bindings.lobby]
 disconnect = { code = "d" }
-focus-chat = { code = "i" }
-focus-editor = { code = "s" }
+focus-chat = { code = "s" }
+focus-editor = { code = "i" }
 
 [key-bindings.join]
 focus-lobby-list = { code = "i" }

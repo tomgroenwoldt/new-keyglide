@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use common::JoinMode;
 use futures_util::SinkExt;
 use log::debug;
 use ratatui::{
@@ -18,10 +19,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use crate::audio::{play_audio, Audio};
 use crate::{
     config::Config,
-    schema::{
-        connection::Connection, editor::Editor, focused_component::FocusedComponent,
-        join::JoinMode, lobby::Lobby, tab::Tab,
-    },
+    schema::{connection::Connection, focused_component::FocusedComponent, lobby::Lobby, tab::Tab},
     ui,
 };
 
@@ -29,17 +27,19 @@ pub struct App {
     pub config: Config,
     /// The currently selected tab.
     pub current_tab: Tab,
-    /// An instance of the users default editor.
-    pub editor: Option<Editor>,
     /// The current size of the terminal the application is running in.
     pub size: Size,
-    pub message_tx: UnboundedSender<AppMessage>,
-    pub message_rx: UnboundedReceiver<AppMessage>,
+
+    pub tx: UnboundedSender<AppMessage>,
+    pub rx: UnboundedReceiver<AppMessage>,
 
     pub connection: Connection,
+    /// The total number of clients (non-playing users) currently connected.
     pub total_clients: usize,
+    /// The total number playing users.
     pub total_players: usize,
-
+    /// The currently focused component has priority over all other elements
+    /// when it comes to user inputs.
     pub focused_component: Option<FocusedComponent>,
 
     pub exit: bool,
@@ -47,41 +47,33 @@ pub struct App {
 
 #[derive(Debug)]
 pub enum AppMessage {
-    // TODO: Move this into the lobby struct if it makes sense.
-    /// Unsets the app's editor.
-    EditorTerminated,
-    ConnectToLobby {
-        join_mode: JoinMode,
-    },
-    ConnectionCounts {
-        players: usize,
-        clients: usize,
-    },
+    /// Connects to a lobby via the given join mode.
+    ConnectToLobby { join_mode: JoinMode },
     /// Disconnects the client from the current lobby.
     DisconnectLobby,
-    /// Signals the app that the backend connection was closed. The app tries
-    /// to reconnnect.
+    /// Updates the total connection count on the home page.
+    ConnectionCounts { players: usize, clients: usize },
+    /// The backend connection was closed. The app tries to reconnnect.
     ServiceDisconnected,
-    /// Signals the app that the backend is back online.
+    /// The backend is back online.
     ServiceBackOnline,
 }
 
 impl App {
     pub async fn new(config: Config, size: Size) -> Result<Self> {
-        let (message_tx, message_rx) = unbounded_channel();
-        let connection = Connection::new(message_tx.clone()).await?;
+        let (tx, rx) = unbounded_channel();
+        let connection = Connection::new(tx.clone()).await?;
         let app = App {
             config,
             current_tab: Tab::Home,
-            editor: None,
             size,
-            message_tx,
-            message_rx,
+            tx,
+            rx,
             connection,
-            focused_component: None,
-            exit: false,
             total_clients: 0,
             total_players: 0,
+            focused_component: None,
+            exit: false,
         };
         Ok(app)
     }
@@ -104,7 +96,7 @@ impl App {
             }
 
             // Handle app messages sent from other tasks.
-            if let Ok(msg) = self.message_rx.try_recv() {
+            if let Ok(msg) = self.rx.try_recv() {
                 self.handle_message(msg).await?;
             }
 
@@ -179,7 +171,7 @@ impl App {
                         // Disconnect from existing lobby.
                         if key.eq(&self.config.key_bindings.lobby.disconnect) {
                             lobby.ws_tx.close().await?;
-                            self.connection = Connection::new(self.message_tx.clone()).await?;
+                            self.connection = Connection::new(self.tx.clone()).await?;
                         }
                         // Focus the chat.
                         if key.eq(&self.config.key_bindings.lobby.focus_chat) {
@@ -188,12 +180,6 @@ impl App {
                         // Focus the editor.
                         if key.eq(&self.config.key_bindings.lobby.focus_editor) {
                             self.focused_component = Some(FocusedComponent::Editor);
-
-                            // If there is no editor running, start one.
-                            if self.editor.is_none() {
-                                let new_editor = Editor::new(self.size, self.message_tx.clone())?;
-                                self.editor = Some(new_editor);
-                            }
                         }
                     }
                     Connection::Offline(_) => {}
@@ -208,17 +194,15 @@ impl App {
         debug!("Handle message: {:?}.", msg);
 
         match msg {
-            AppMessage::EditorTerminated => {
-                self.editor = None;
-            }
             AppMessage::DisconnectLobby => {
+                self.focused_component = None;
                 if let Connection::Lobby(ref mut lobby) = self.connection {
                     lobby.ws_tx.close().await?;
-                    self.connection = Connection::new(self.message_tx.clone()).await?;
+                    self.connection = Connection::new(self.tx.clone()).await?;
                 }
             }
             AppMessage::ServiceBackOnline => {
-                self.connection = Connection::new(self.message_tx.clone()).await?;
+                self.connection = Connection::new(self.tx.clone()).await?;
 
                 #[cfg(feature = "audio")]
                 play_audio(&self.config, Audio::Reconnected)?;
@@ -226,10 +210,10 @@ impl App {
             AppMessage::ServiceDisconnected => {
                 // Make sure to unfocus components on disconnect.
                 self.focused_component = None;
-                self.connection = Connection::new(self.message_tx.clone()).await?;
+                self.connection = Connection::new(self.tx.clone()).await?;
             }
             AppMessage::ConnectToLobby { join_mode } => {
-                let lobby = Lobby::new(self.message_tx.clone(), join_mode).await?;
+                let lobby = Lobby::new(self.tx.clone(), join_mode, self.size).await?;
                 self.connection = Connection::Lobby(lobby);
                 self.focused_component = None;
             }
@@ -270,8 +254,8 @@ impl App {
                 self.on_key(key).await?;
             }
             Event::Resize(cols, rows) => {
-                if let Some(ref mut editor) = self.editor {
-                    editor.resize(rows, cols)?;
+                if let Connection::Lobby(ref mut lobby) = self.connection {
+                    lobby.resize(rows, cols)?;
                 }
                 self.size = terminal.size()?;
             }

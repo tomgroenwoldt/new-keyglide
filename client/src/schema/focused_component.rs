@@ -24,8 +24,8 @@ impl FocusedComponent {
                 }
             }
             FocusedComponent::Editor => {
-                if let Some(ref mut editor) = app.editor {
-                    editor.handle_key_event(key)?;
+                if let Connection::Lobby(ref mut lobby) = app.connection {
+                    lobby.editor.terminal.handle_key_event(key)?;
                 }
             }
             FocusedComponent::Lobbies => {

@@ -6,7 +6,10 @@ use ratatui::{
 };
 use tui_term::widget::PseudoTerminal;
 
-use crate::{app::App, schema::focused_component::FocusedComponent};
+use crate::{
+    app::App,
+    schema::{connection::Connection, focused_component::FocusedComponent},
+};
 
 pub fn draw_editor(f: &mut Frame, app: &App, area: Rect) {
     let focus_editor_key = format!("<{}>", app.config.key_bindings.lobby.focus_editor.code);
@@ -19,8 +22,13 @@ pub fn draw_editor(f: &mut Frame, app: &App, area: Rect) {
     } else {
         block = block.border_style(Style::default().fg(Color::White));
     }
-    if let Some(ref editor) = app.editor {
-        let parser = editor.parser.lock().expect("Unable to lock editor parser");
+    if let Connection::Lobby(ref lobby) = app.connection {
+        let parser = lobby
+            .editor
+            .terminal
+            .parser
+            .lock()
+            .expect("Unable to lock editor parser");
         let terminal = PseudoTerminal::new(parser.screen()).block(block);
         f.render_widget(terminal, area);
     } else {

@@ -1,3 +1,4 @@
+use goal::draw_goal;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     Frame,
@@ -8,6 +9,7 @@ use crate::{app::App, constants::CHAT_SIZE, schema::connection::Connection};
 
 mod chat;
 mod editor;
+mod goal;
 mod join;
 mod lobby;
 
@@ -24,7 +26,12 @@ pub fn draw_play_tab(f: &mut Frame, app: &mut App, area: Rect) {
             draw_lobby(f, vertical[0], lobby);
             draw_chat(f, app, vertical[1], lobby);
 
-            draw_editor(f, app, horizontal[1]);
+            let vertical =
+                Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .split(horizontal[1]);
+
+            draw_editor(f, app, vertical[0]);
+            draw_goal(f, lobby, vertical[1]);
         }
         // If we are not connected to a lobby, draw the join form.
         Connection::Join(ref join) => {
