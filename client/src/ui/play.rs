@@ -6,6 +6,7 @@ use ratatui::{
     Frame,
 };
 
+use common::constants::MAX_LOBBY_SIZE;
 use common::LobbyStatus;
 
 use self::{
@@ -14,7 +15,7 @@ use self::{
 use super::centered_rect;
 use crate::{
     app::App,
-    constants::{CHAT_SIZE, EDITOR_HEIGHT, GOAL_HEIGHT, PLAY_SIDE_WIDTH, TERMINAL_WIDTH},
+    constants::{EDITOR_HEIGHT, GOAL_HEIGHT, PLAY_SIDE_WIDTH, TERMINAL_WIDTH},
     schema::connection::Connection,
 };
 
@@ -33,7 +34,7 @@ pub fn draw_play_tab(f: &mut Frame, app: &mut App, area: Rect) {
             ])
             .split(area);
             let vertical =
-                Layout::vertical([Constraint::Min(0), Constraint::Length(CHAT_SIZE as u16)])
+                Layout::vertical([Constraint::Max(MAX_LOBBY_SIZE as u16), Constraint::Min(0)])
                     .split(horizontal[0]);
 
             draw_lobby(f, app, vertical[0], lobby);
