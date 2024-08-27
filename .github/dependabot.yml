@@ -1,25 +1,6 @@
 version: 2
 updates:
   - package-ecosystem: "cargo"
-    directory: "/backend"
-    schedule:
-      interval: "weekly"
-    groups:
-      cargo-dependencies:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "cargo"
-    directory: "/client"
-    schedule:
-      interval: "weekly"
-    groups:
-      cargo-dependencies:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "cargo"
-    directory: "/common"
     schedule:
       interval: "weekly"
     groups:
