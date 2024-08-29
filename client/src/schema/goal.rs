@@ -1,16 +1,23 @@
-use std::{fs, path::Path};
+use std::io::Write;
 
 use anyhow::Result;
 use log::warn;
 use portable_pty::{Child, CommandBuilder};
 use ratatui::layout::Size;
+use tempfile::NamedTempFile;
 use tokio::sync::mpsc::UnboundedSender;
-use uuid::Uuid;
+
+use crate::constants::{GOAL_HEIGHT, TERMINAL_WIDTH};
 
 use super::{lobby::LobbyMessage, terminal::Terminal};
 
 pub struct Goal {
     pub terminal: Terminal,
+    pub is_full_screen: bool,
+    /// The file the editor is operating on. We keep this inside this struct to
+    /// prevent dropping the file (and thereby deleting it).
+    #[allow(dead_code)]
+    pub file: NamedTempFile,
 }
 
 impl Goal {
@@ -23,24 +30,25 @@ impl Goal {
         lobby_tx: UnboundedSender<LobbyMessage>,
         goal_file: Vec<u8>,
     ) -> Result<Self> {
-        // Write the start file bytes to a file.
-        let file_name = Uuid::new_v4();
-        let file_path = format!("/tmp/{}", file_name);
-        fs::write(&file_path, goal_file)?;
+        // Write the start file bytes to a temporary file.
+        let mut file = NamedTempFile::new()?;
+        file.write_all(&goal_file)?;
 
         // Build the command that opens the goal file fetched from the backend
         // service.
         let mut cmd = CommandBuilder::new("helix");
-        let path = Path::new(&file_path);
-        cmd.arg(path);
+        cmd.arg(file.path());
 
         // Build the terminal and resize it directly.
-        let (mut terminal, child) = Terminal::new(app_size, cmd)?;
-        terminal.resize(app_size.height, app_size.width)?;
+        let (terminal, child) = Terminal::new(app_size, cmd)?;
 
         tokio::spawn(Goal::handle_termination(child, lobby_tx));
 
-        Ok(Self { terminal })
+        Ok(Self {
+            terminal,
+            is_full_screen: false,
+            file,
+        })
     }
 
     /// # Handle termination
@@ -58,6 +66,12 @@ impl Goal {
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
+        if self.is_full_screen {
+            self.terminal.resize(rows - 2, cols - 2)?;
+            return Ok(());
+        }
+        let rows = ((rows - 5) as f64 * GOAL_HEIGHT) as u16 - 1;
+        let cols = ((cols - 2) as f64 * TERMINAL_WIDTH) as u16;
         self.terminal.resize(rows, cols)?;
         Ok(())
     }

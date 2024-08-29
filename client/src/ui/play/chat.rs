@@ -7,7 +7,7 @@ use ratatui::{
 
 use crate::{
     app::App,
-    schema::{focused_component::FocusedComponent, lobby::Lobby},
+    schema::{focused_component::ComponentKind, lobby::Lobby},
 };
 
 pub fn draw_chat(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
@@ -17,7 +17,7 @@ pub fn draw_chat(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
         .title(Title::from(focus_chat_key).alignment(Alignment::Right));
     let mut input_text = format!("You: {}", lobby.chat.input.clone());
     let inner_chunks = Layout::vertical([Constraint::Min(0), Constraint::Length(2)]).split(area);
-    if let Some(FocusedComponent::Chat) = app.focused_component {
+    if app.focused_component_is_kind(ComponentKind::Chat) {
         block = block.border_style(Style::default().fg(Color::Green));
         input_text.push('|');
     }

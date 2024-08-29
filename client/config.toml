@@ -76,13 +76,13 @@ up = { code = "k" }
 
 [key-bindings.miscellaneous]
 unfocus = { code = "q", modifiers = "CONTROL" }
-chat = { code = "i" }
-editor = { code = "s" }
+toggle-full-screen = { code = "f", modifiers = "CONTROL" }
 
 [key-bindings.lobby]
 disconnect = { code = "d" }
 focus-chat = { code = "s" }
 focus-editor = { code = "i" }
+focus-goal = { code = "g" }
 
 [key-bindings.join]
 focus-lobby-list = { code = "i" }

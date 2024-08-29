@@ -91,24 +91,29 @@ impl Lobby {
             encryptions.insert(*id, encryption);
         }
 
+        let mut editor = Editor::new(
+            size,
+            tx.clone(),
+            lobby_information.challenge_files.start_file.clone(),
+        )?;
+        editor.resize(size.height, size.width)?;
+        let mut goal = Goal::new(
+            size,
+            tx.clone(),
+            lobby_information.challenge_files.goal_file.clone(),
+        )?;
+        goal.resize(size.height, size.width)?;
+
         Ok(Self {
             name: lobby_information.name,
             players: lobby_information.players,
             encryptions,
             chat: Chat::new(tx.clone()),
             ws_tx,
-            tx: tx.clone(),
+            tx,
             rx,
-            editor: Editor::new(
-                size,
-                tx.clone(),
-                lobby_information.challenge_files.start_file.clone(),
-            )?,
-            goal: Goal::new(
-                size,
-                tx,
-                lobby_information.challenge_files.goal_file.clone(),
-            )?,
+            editor,
+            goal,
             size,
             challenge_files: lobby_information.challenge_files,
         })

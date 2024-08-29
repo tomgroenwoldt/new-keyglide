@@ -19,7 +19,12 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use crate::audio::{play_audio, Audio};
 use crate::{
     config::Config,
-    schema::{connection::Connection, focused_component::FocusedComponent, lobby::Lobby, tab::Tab},
+    schema::{
+        connection::Connection,
+        focused_component::{ComponentKind, FocusedComponent},
+        lobby::Lobby,
+        tab::Tab,
+    },
     ui,
 };
 
@@ -114,6 +119,16 @@ impl App {
         Ok(())
     }
 
+    pub fn focused_component_is_kind(&self, kind: ComponentKind) -> bool {
+        if let Some(ref component) = self.focused_component {
+            if component.kind.eq(&kind) {
+                return true;
+            }
+            return false;
+        }
+        false
+    }
+
     /// # Move to the next tab
     ///
     /// Selects the next tab.
@@ -132,17 +147,18 @@ impl App {
         // Unfocus component or quit the application if no component is focused.
         if key.eq(&self.config.key_bindings.miscellaneous.unfocus) {
             if self.focused_component.is_some() {
+                FocusedComponent::clean_up(self)?;
                 self.focused_component = None;
             } else {
-                self.focused_component = Some(FocusedComponent::ExitPopup);
+                self.focused_component = Some(FocusedComponent::new(ComponentKind::ExitPopup));
             }
             return Ok(());
         }
 
         // Check whether there is a component focused. Such components receive
         // direct user input and take precedence.
-        if let Some(focused_component) = self.focused_component.clone() {
-            focused_component.handle_key_event(self, key).await?;
+        if self.focused_component.is_some() {
+            FocusedComponent::handle_key_event(self, key).await?;
         } else {
             // First, handle general purpose key bindings.
             if key.eq(&self.config.key_bindings.movement.left) {
@@ -164,7 +180,8 @@ impl App {
                 match self.connection {
                     Connection::Join(_) => {
                         if key.eq(&self.config.key_bindings.join.focus_lobby_list) {
-                            self.focused_component = Some(FocusedComponent::Lobbies);
+                            self.focused_component =
+                                Some(FocusedComponent::new(ComponentKind::Lobbies));
                         }
                     }
                     Connection::Lobby(ref mut lobby) => {
@@ -175,11 +192,18 @@ impl App {
                         }
                         // Focus the chat.
                         if key.eq(&self.config.key_bindings.lobby.focus_chat) {
-                            self.focused_component = Some(FocusedComponent::Chat);
+                            self.focused_component =
+                                Some(FocusedComponent::new(ComponentKind::Chat));
                         }
                         // Focus the editor.
                         if key.eq(&self.config.key_bindings.lobby.focus_editor) {
-                            self.focused_component = Some(FocusedComponent::Editor);
+                            self.focused_component =
+                                Some(FocusedComponent::new(ComponentKind::Editor));
+                        }
+                        // Focus the goal.
+                        if key.eq(&self.config.key_bindings.lobby.focus_goal) {
+                            self.focused_component =
+                                Some(FocusedComponent::new(ComponentKind::Goal));
                         }
                     }
                     Connection::Offline(_) => {}

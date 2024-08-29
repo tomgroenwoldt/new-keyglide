@@ -39,6 +39,7 @@ pub struct Movement {
 #[serde(rename_all = "kebab-case")]
 pub struct Miscellaneous {
     pub unfocus: KeyBinding,
+    pub toggle_full_screen: KeyBinding,
 }
 
 #[derive(Clone, Debug, Deserialize, CheckDuplicates)]
@@ -47,6 +48,7 @@ pub struct Lobby {
     pub disconnect: KeyBinding,
     pub focus_chat: KeyBinding,
     pub focus_editor: KeyBinding,
+    pub focus_goal: KeyBinding,
 }
 
 #[derive(Clone, Debug, Deserialize, CheckDuplicates)]
