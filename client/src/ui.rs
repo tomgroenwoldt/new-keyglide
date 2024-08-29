@@ -1,4 +1,5 @@
 use logs::draw_logs_tab;
+use play::{chat::draw_chat, editor::draw_editor, goal::draw_goal, join::draw_join};
 use rand::{thread_rng, Rng};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
@@ -12,7 +13,7 @@ use self::{
 use crate::{
     app::App,
     constants::SYMBOLS,
-    schema::{connection::Connection, focused_component::FocusedComponent, tab::Tab},
+    schema::{connection::Connection, focused_component::ComponentKind, tab::Tab},
 };
 
 mod exit;
@@ -23,10 +24,21 @@ mod offline;
 mod play;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
+    // Check if one component is set to full screen. If that's the case draw the
+    // full screen component and return directly.
+    if app
+        .focused_component
+        .as_ref()
+        .is_some_and(|component| component.is_full_screen)
+    {
+        draw_full_screen(f, app);
+        return;
+    }
+
     draw_application(f, app);
 
     // Optionally, render an exit popup above the current content.
-    if let Some(FocusedComponent::ExitPopup) = app.focused_component {
+    if app.focused_component_is_kind(ComponentKind::ExitPopup) {
         draw_exit(f, &app.config);
     }
 }
@@ -70,6 +82,34 @@ pub fn centered_rect(r: Rect, content_length: u16, content_height: u16) -> Rect 
     Layout::horizontal([Constraint::Length(horizontal_length)])
         .flex(Flex::Center)
         .split(popup_layout[0])[0]
+}
+
+/// # Draw full screen
+///
+/// Draws a focused component on the full screen.
+pub fn draw_full_screen(f: &mut Frame, app: &mut App) {
+    let Some(ref focused_component) = app.focused_component else {
+        return;
+    };
+
+    let area = Rect::new(0, 0, app.size.width, app.size.height);
+    match &app.connection {
+        Connection::Join(ref join) => match focused_component.kind {
+            ComponentKind::Chat
+            | ComponentKind::Editor
+            | ComponentKind::Goal
+            | ComponentKind::ExitPopup => {}
+            ComponentKind::Lobbies => draw_join(f, app, area, join),
+        },
+        Connection::Lobby(ref lobby) => match focused_component.kind {
+            ComponentKind::Chat => draw_chat(f, app, area, lobby),
+            ComponentKind::Editor => draw_editor(f, app, area),
+            ComponentKind::Goal => draw_goal(f, app, area),
+            ComponentKind::ExitPopup => draw_exit(f, &app.config),
+            ComponentKind::Lobbies => {}
+        },
+        Connection::Offline(_) => {}
+    }
 }
 
 pub fn get_random_symbol() -> char {

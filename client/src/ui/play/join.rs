@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::{
     app::App,
-    schema::{encryption::Encryption, focused_component::FocusedComponent, join::Join},
+    schema::{encryption::Encryption, focused_component::ComponentKind, join::Join},
     ui::get_random_symbol,
 };
 
@@ -18,10 +18,8 @@ pub fn draw_join(f: &mut Frame, app: &App, area: Rect, join: &Join) {
         .title("Lobbies")
         .title(Title::from(focus_lobby_key).alignment(Alignment::Right));
 
-    if let Some(FocusedComponent::Lobbies) = app.focused_component {
+    if app.focused_component_is_kind(ComponentKind::Lobbies) {
         block = block.border_style(Style::default().fg(Color::Green));
-    } else {
-        block = block.border_style(Style::default().fg(Color::White));
     }
 
     let encrypted_names = join.encryptions.iter().map(

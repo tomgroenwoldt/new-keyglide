@@ -75,13 +75,12 @@ impl Terminal {
             }
         });
 
-        let mut terminal = Self {
+        let terminal = Self {
             sender: tx,
             master_pty: pair.master,
             parser,
             child_killer: child.clone_killer(),
         };
-        terminal.resize(app_size.height, app_size.width)?;
 
         Ok((terminal, child))
     }
@@ -127,8 +126,6 @@ impl Terminal {
     pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
         debug!("Resize terminal to {} rows and {} columns.", rows, cols);
 
-        let rows = ((rows - 5) as f64 * 0.5) as u16;
-        let cols = ((cols - 2) as f64 * 0.8) as u16;
         let pty_size = PtySize {
             rows,
             cols,

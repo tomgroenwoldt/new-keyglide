@@ -8,7 +8,7 @@ use tui_term::widget::PseudoTerminal;
 
 use crate::{
     app::App,
-    schema::{connection::Connection, focused_component::FocusedComponent},
+    schema::{connection::Connection, focused_component::ComponentKind},
 };
 
 pub fn draw_editor(f: &mut Frame, app: &App, area: Rect) {
@@ -17,21 +17,18 @@ pub fn draw_editor(f: &mut Frame, app: &App, area: Rect) {
         .title("Editor")
         .title(Title::from(focus_editor_key).alignment(Alignment::Right));
 
-    if let Some(FocusedComponent::Editor) = app.focused_component {
+    if app.focused_component_is_kind(ComponentKind::Editor) {
         block = block.border_style(Style::default().fg(Color::Green));
-    } else {
-        block = block.border_style(Style::default().fg(Color::White));
     }
-    if let Connection::Lobby(ref lobby) = app.connection {
-        let parser = lobby
-            .editor
-            .terminal
-            .parser
-            .lock()
-            .expect("Unable to lock editor parser");
-        let terminal = PseudoTerminal::new(parser.screen()).block(block);
-        f.render_widget(terminal, area);
-    } else {
-        f.render_widget(block, area);
-    }
+    let Connection::Lobby(ref lobby) = app.connection else {
+        return;
+    };
+    let parser = lobby
+        .editor
+        .terminal
+        .parser
+        .lock()
+        .expect("Unable to lock editor parser");
+    let terminal = PseudoTerminal::new(parser.screen()).block(block);
+    f.render_widget(terminal, area);
 }
