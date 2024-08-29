@@ -45,13 +45,21 @@ impl FocusedComponent {
             ComponentKind::Editor => {
                 if let Connection::Lobby(ref mut lobby) = app.connection {
                     lobby.editor.is_full_screen = focused_component.is_full_screen;
-                    lobby.editor.resize(app.size.height, app.size.width)?;
+                    lobby.editor.resize(
+                        app.size.height,
+                        app.size.width,
+                        lobby.terminal_layout_direction,
+                    )?;
                 }
             }
             ComponentKind::Goal => {
                 if let Connection::Lobby(ref mut lobby) = app.connection {
                     lobby.goal.is_full_screen = focused_component.is_full_screen;
-                    lobby.goal.resize(app.size.height, app.size.width)?;
+                    lobby.goal.resize(
+                        app.size.height,
+                        app.size.width,
+                        lobby.terminal_layout_direction,
+                    )?;
                 }
             }
             ComponentKind::Lobbies => {}
@@ -120,7 +128,11 @@ impl FocusedComponent {
             ComponentKind::Editor => {
                 if let Connection::Lobby(ref mut lobby) = app.connection {
                     lobby.editor.is_full_screen = false;
-                    lobby.editor.resize(app.size.height, app.size.width)?;
+                    lobby.editor.resize(
+                        app.size.height,
+                        app.size.width,
+                        lobby.terminal_layout_direction,
+                    )?;
                 }
             }
             // In case of a focused editor, tell the actual editor instance it's
@@ -128,7 +140,11 @@ impl FocusedComponent {
             ComponentKind::Goal => {
                 if let Connection::Lobby(ref mut lobby) = app.connection {
                     lobby.goal.is_full_screen = false;
-                    lobby.goal.resize(app.size.height, app.size.width)?;
+                    lobby.goal.resize(
+                        app.size.height,
+                        app.size.width,
+                        lobby.terminal_layout_direction,
+                    )?;
                 }
             }
             ComponentKind::Lobbies => {}

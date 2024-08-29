@@ -3,7 +3,7 @@ use std::io::Write;
 use anyhow::Result;
 use log::warn;
 use portable_pty::{Child, CommandBuilder};
-use ratatui::layout::Size;
+use ratatui::layout::{Direction, Size};
 use tempfile::NamedTempFile;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -65,13 +65,22 @@ impl Goal {
         Ok(())
     }
 
-    pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
+    pub fn resize(&mut self, rows: u16, cols: u16, direction: Direction) -> Result<()> {
         if self.is_full_screen {
             self.terminal.resize(rows - 2, cols - 2)?;
             return Ok(());
         }
-        let rows = ((rows - 5) as f64 * GOAL_HEIGHT) as u16 - 1;
-        let cols = ((cols - 2) as f64 * TERMINAL_WIDTH) as u16;
+        let (rows, cols) = match direction {
+            Direction::Horizontal => (
+                // The full application height - header and borders.
+                ((rows - 5) as f64) as u16,
+                ((cols - 2) as f64 * TERMINAL_WIDTH * 0.5) as u16 - 1,
+            ),
+            Direction::Vertical => (
+                ((rows - 5) as f64 * GOAL_HEIGHT) as u16 - 1,
+                ((cols - 2) as f64 * TERMINAL_WIDTH) as u16,
+            ),
+        };
         self.terminal.resize(rows, cols)?;
         Ok(())
     }

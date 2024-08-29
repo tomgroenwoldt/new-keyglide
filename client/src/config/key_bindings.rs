@@ -49,6 +49,7 @@ pub struct Lobby {
     pub focus_chat: KeyBinding,
     pub focus_editor: KeyBinding,
     pub focus_goal: KeyBinding,
+    pub toggle_terminal_layout: KeyBinding,
 }
 
 #[derive(Clone, Debug, Deserialize, CheckDuplicates)]

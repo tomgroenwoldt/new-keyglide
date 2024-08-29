@@ -83,6 +83,7 @@ disconnect = { code = "d" }
 focus-chat = { code = "s" }
 focus-editor = { code = "i" }
 focus-goal = { code = "g" }
+toggle-terminal-layout = { code = "v" }
 
 [key-bindings.join]
 focus-lobby-list = { code = "i" }
