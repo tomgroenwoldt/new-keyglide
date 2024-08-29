@@ -191,19 +191,22 @@ impl App {
                             self.connection = Connection::new(self.tx.clone()).await?;
                         }
                         // Focus the chat.
-                        if key.eq(&self.config.key_bindings.lobby.focus_chat) {
+                        else if key.eq(&self.config.key_bindings.lobby.focus_chat) {
                             self.focused_component =
                                 Some(FocusedComponent::new(ComponentKind::Chat));
                         }
                         // Focus the editor.
-                        if key.eq(&self.config.key_bindings.lobby.focus_editor) {
+                        else if key.eq(&self.config.key_bindings.lobby.focus_editor) {
                             self.focused_component =
                                 Some(FocusedComponent::new(ComponentKind::Editor));
                         }
                         // Focus the goal.
-                        if key.eq(&self.config.key_bindings.lobby.focus_goal) {
+                        else if key.eq(&self.config.key_bindings.lobby.focus_goal) {
                             self.focused_component =
                                 Some(FocusedComponent::new(ComponentKind::Goal));
+                        } else if key.eq(&self.config.key_bindings.lobby.toggle_terminal_layout) {
+                            lobby.toggle_terminal_layout();
+                            lobby.resize(self.size.height, self.size.width)?;
                         }
                     }
                     Connection::Offline(_) => {}

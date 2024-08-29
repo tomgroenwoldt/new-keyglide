@@ -7,7 +7,7 @@ use futures_util::{
     SinkExt, StreamExt,
 };
 use log::{debug, error, info};
-use ratatui::layout::Size;
+use ratatui::layout::{Direction, Size};
 use tokio::{
     net::TcpStream,
     sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -48,6 +48,9 @@ pub struct Lobby {
     pub goal: Goal,
     pub app_size: Size,
     pub challenge_files: ChallengeFiles,
+    /// Whether to display the two editors horizontally or vertically next to
+    /// each other.
+    pub terminal_layout_direction: Direction,
 }
 
 impl Lobby {
@@ -96,13 +99,14 @@ impl Lobby {
             tx.clone(),
             lobby_information.challenge_files.start_file.clone(),
         )?;
-        editor.resize(app_size.height, app_size.width)?;
+        let terminal_layout_direction = Direction::Vertical;
+        editor.resize(app_size.height, app_size.width, terminal_layout_direction)?;
         let mut goal = Goal::new(
             app_size,
             tx.clone(),
             lobby_information.challenge_files.goal_file.clone(),
         )?;
-        goal.resize(app_size.height, app_size.width)?;
+        goal.resize(app_size.height, app_size.width, terminal_layout_direction)?;
 
         Ok(Self {
             name: lobby_information.name,
@@ -116,6 +120,7 @@ impl Lobby {
             goal,
             app_size,
             challenge_files: lobby_information.challenge_files,
+            terminal_layout_direction,
         })
     }
 
@@ -174,8 +179,11 @@ impl Lobby {
                     self.tx.clone(),
                     self.challenge_files.start_file.clone(),
                 )?;
-                self.editor
-                    .resize(self.app_size.height, self.app_size.width)?;
+                self.editor.resize(
+                    self.app_size.height,
+                    self.app_size.width,
+                    self.terminal_layout_direction,
+                )?;
             }
             LobbyMessage::GoalTerminated => {
                 // Restart the goal editor if it terminates.
@@ -184,8 +192,11 @@ impl Lobby {
                     self.tx.clone(),
                     self.challenge_files.goal_file.clone(),
                 )?;
-                self.goal
-                    .resize(self.app_size.height, self.app_size.width)?;
+                self.goal.resize(
+                    self.app_size.height,
+                    self.app_size.width,
+                    self.terminal_layout_direction,
+                )?;
             }
         }
         Ok(())
@@ -237,8 +248,10 @@ impl Lobby {
 
     pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
         self.app_size = Size::new(cols, rows);
-        self.goal.resize(rows, cols)?;
-        self.editor.resize(rows, cols)?;
+        self.goal
+            .resize(rows, cols, self.terminal_layout_direction)?;
+        self.editor
+            .resize(rows, cols, self.terminal_layout_direction)?;
         Ok(())
     }
 
@@ -261,6 +274,14 @@ impl Lobby {
         }
         for id in encryptions_to_delete {
             self.encryptions.remove(&id);
+        }
+    }
+
+    pub fn toggle_terminal_layout(&mut self) {
+        if self.terminal_layout_direction == Direction::Vertical {
+            self.terminal_layout_direction = Direction::Horizontal;
+        } else {
+            self.terminal_layout_direction = Direction::Vertical;
         }
     }
 

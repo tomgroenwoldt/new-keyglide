@@ -33,14 +33,18 @@ pub fn draw_play_tab(f: &mut Frame, app: &mut App, area: Rect) {
             draw_lobby(f, vertical[0], lobby);
             draw_chat(f, app, vertical[1], lobby);
 
-            let vertical = Layout::vertical([
-                Constraint::Percentage((EDITOR_HEIGHT * 100.0) as u16),
-                Constraint::Percentage((GOAL_HEIGHT * 100.0) as u16),
-            ])
+            let layout = Layout::new(
+                lobby.terminal_layout_direction,
+                [
+                    // Convert constant heights into integer percentage values.
+                    Constraint::Percentage((EDITOR_HEIGHT * 100.0) as u16),
+                    Constraint::Percentage((GOAL_HEIGHT * 100.0) as u16),
+                ],
+            )
             .split(horizontal[1]);
 
-            draw_editor(f, app, vertical[0]);
-            draw_goal(f, app, vertical[1]);
+            draw_editor(f, app, layout[0]);
+            draw_goal(f, app, layout[1]);
         }
         // If we are not connected to a lobby, draw the join form.
         Connection::Join(ref join) => {
