@@ -46,7 +46,7 @@ pub struct Lobby {
     pub editor: Editor,
     /// An instance of the users default editor only capable of resizing.
     pub goal: Goal,
-    pub size: Size,
+    pub app_size: Size,
     pub challenge_files: ChallengeFiles,
 }
 
@@ -57,7 +57,7 @@ impl Lobby {
     pub async fn new(
         app_tx: UnboundedSender<AppMessage>,
         join_mode: JoinMode,
-        size: Size,
+        app_size: Size,
     ) -> Result<Self> {
         // First, fetch lobby information of the lobby we want to join.
         let url = format!("http://127.0.0.1:3030/lobbies/{}", join_mode);
@@ -92,17 +92,17 @@ impl Lobby {
         }
 
         let mut editor = Editor::new(
-            size,
+            app_size,
             tx.clone(),
             lobby_information.challenge_files.start_file.clone(),
         )?;
-        editor.resize(size.height, size.width)?;
+        editor.resize(app_size.height, app_size.width)?;
         let mut goal = Goal::new(
-            size,
+            app_size,
             tx.clone(),
             lobby_information.challenge_files.goal_file.clone(),
         )?;
-        goal.resize(size.height, size.width)?;
+        goal.resize(app_size.height, app_size.width)?;
 
         Ok(Self {
             name: lobby_information.name,
@@ -114,7 +114,7 @@ impl Lobby {
             rx,
             editor,
             goal,
-            size,
+            app_size,
             challenge_files: lobby_information.challenge_files,
         })
     }
@@ -170,18 +170,22 @@ impl Lobby {
             LobbyMessage::EditorTerminated => {
                 // Restart the editor if it terminates.
                 self.editor = Editor::new(
-                    self.size,
+                    self.app_size,
                     self.tx.clone(),
                     self.challenge_files.start_file.clone(),
                 )?;
+                self.editor
+                    .resize(self.app_size.height, self.app_size.width)?;
             }
             LobbyMessage::GoalTerminated => {
                 // Restart the goal editor if it terminates.
                 self.goal = Goal::new(
-                    self.size,
+                    self.app_size,
                     self.tx.clone(),
                     self.challenge_files.goal_file.clone(),
                 )?;
+                self.goal
+                    .resize(self.app_size.height, self.app_size.width)?;
             }
         }
         Ok(())
@@ -232,6 +236,7 @@ impl Lobby {
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
+        self.app_size = Size::new(cols, rows);
         self.goal.resize(rows, cols)?;
         self.editor.resize(rows, cols)?;
         Ok(())
