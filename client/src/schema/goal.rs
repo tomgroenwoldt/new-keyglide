@@ -29,6 +29,7 @@ impl Goal {
         app_size: Size,
         lobby_tx: UnboundedSender<LobbyMessage>,
         goal_file: Vec<u8>,
+        is_full_screen: bool,
     ) -> Result<Self> {
         // Write the start file bytes to a temporary file.
         let mut file = NamedTempFile::new()?;
@@ -46,7 +47,7 @@ impl Goal {
 
         Ok(Self {
             terminal,
-            is_full_screen: false,
+            is_full_screen,
             file,
         })
     }

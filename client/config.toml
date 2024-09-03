@@ -15,7 +15,6 @@
 # ──────────────────────────────────────────────────────────── #
 
 [audio]
-reconnected = "/home/tom/Downloads/oh-my-god-meme.mp3"
 
 # ──────────────────────────────────────────────────────────── #
 #                    Key Binding Configuration                 #
@@ -84,6 +83,9 @@ focus-chat = { code = "s" }
 focus-editor = { code = "i" }
 focus-goal = { code = "g" }
 toggle-terminal-layout = { code = "v" }
+
+# Lobby owner keybindings.
+start = { code = "x" }
 
 [key-bindings.join]
 focus-lobby-list = { code = "i" }

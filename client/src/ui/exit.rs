@@ -13,8 +13,8 @@ pub fn draw_exit(f: &mut Frame, config: &Config) {
         .title("Exit?")
         .border_style(Style::default().fg(Color::LightRed));
     let text = format!(
-        "Confirm <{}>, Abort <{}>",
-        config.key_bindings.popup.confirm.code, config.key_bindings.popup.abort.code
+        "Confirm {}, Abort {}",
+        config.key_bindings.popup.confirm, config.key_bindings.popup.abort
     );
     let area = centered_rect(f.area(), text.len() as u16, 1);
     let paragraph = Paragraph::new(text).block(popup);
