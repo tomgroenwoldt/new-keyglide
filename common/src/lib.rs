@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, str::FromStr};
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use strum::Display;
 #[cfg(feature = "client")]
@@ -11,6 +12,7 @@ pub mod constants;
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientMessage {
     SendMessage { message: String },
+    RequestStart,
 }
 
 #[cfg(feature = "client")]
@@ -44,12 +46,30 @@ pub struct Player {
 pub struct LobbyListItem {
     pub name: String,
     pub player_count: usize,
+    pub status: LobbyStatus,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Display, PartialEq, Eq)]
+pub enum LobbyStatus {
+    #[strum(to_string = "Waiting for players")]
+    WaitingForPlayers,
+    /// Holds the time the game starts.
+    #[strum(to_string = "About to start")]
+    AboutToStart(DateTime<Utc>),
+    /// Holds the time the game finishes.
+    #[strum(to_string = "In progress")]
+    InProgress(DateTime<Utc>),
+    /// Holds the time the game reset.
+    #[strum(to_string = "Just finished")]
+    Finish(DateTime<Utc>),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LobbyInformation {
     pub id: Uuid,
     pub name: String,
+    pub status: LobbyStatus,
+    pub owner: Option<Uuid>,
     pub players: BTreeMap<Uuid, Player>,
     pub challenge_files: ChallengeFiles,
 }
@@ -99,15 +119,20 @@ impl FromStr for JoinMode {
 #[derive(Clone, Debug, Serialize)]
 pub enum BackendMessage {
     CurrentLobbies(BTreeMap<Uuid, LobbyListItem>),
-    UpdateLobbyList(Uuid, LobbyListItem),
+    AddLobby(Uuid, LobbyListItem),
+    UpdateLobbyPlayerCount { id: Uuid, player_count: usize },
+    UpdateLobbyStatus { id: Uuid, status: LobbyStatus },
     RemoveLobby(Uuid),
     LobbyFull,
+    LobbyNotWaitingForPlayers,
     ConnectionCounts { clients: usize, players: usize },
 
     SendLobbyInformation(LobbyInformation),
     ProvidePlayerId { id: Uuid },
+    AssignOwner { id: Uuid },
     AddPlayer(Player),
     RemovePlayer(Uuid),
+    StatusUpdate { status: LobbyStatus },
 
     SendMessage(String),
     CloseConnection,

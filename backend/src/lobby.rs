@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use fake::{faker::company::en::CompanyName, Fake};
 use tokio::sync::mpsc::UnboundedSender;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use common::{
     constants::MAX_LOBBY_SIZE, BackendMessage, ChallengeFiles, LobbyInformation, LobbyListItem,
+    LobbyStatus,
 };
 
 use crate::{app::message::AppMessage, constants::EMPTY_LOBBY_LIFETIME, player::Player};
@@ -16,8 +17,14 @@ use crate::{app::message::AppMessage, constants::EMPTY_LOBBY_LIFETIME, player::P
 pub struct Lobby {
     pub id: Uuid,
     pub name: String,
+    /// The current owner of the lobby. It's not guaranteed that there always is
+    /// an owner (e.g., in an empty lobby). The first player joining the lobby
+    /// is assigned the owner role. If this player leaves the next available
+    /// player is assigned.
+    pub owner: Option<Uuid>,
     pub players: BTreeMap<Uuid, Player>,
     pub challenge_files: ChallengeFiles,
+    pub status: LobbyStatus,
 }
 
 impl Default for Lobby {
@@ -32,12 +39,13 @@ impl Default for Lobby {
             goal_file,
         };
         let id = Uuid::new_v4();
-        debug!("Lobby ID: {}", id);
         Self {
             id,
             name: CompanyName().fake(),
+            owner: None,
             players: BTreeMap::new(),
             challenge_files,
+            status: LobbyStatus::WaitingForPlayers,
         }
     }
 }
@@ -57,6 +65,7 @@ impl Lobby {
         LobbyListItem {
             name: self.name.clone(),
             player_count: self.players.len(),
+            status: self.status.clone(),
         }
     }
 
@@ -68,6 +77,8 @@ impl Lobby {
         LobbyInformation {
             id: self.id,
             name: self.name.clone(),
+            status: self.status.clone(),
+            owner: self.owner,
             players,
             challenge_files: self.challenge_files.clone(),
         }
@@ -95,6 +106,17 @@ impl Lobby {
             return Ok(());
         }
 
+        if self.status != LobbyStatus::WaitingForPlayers {
+            warn!(
+                "Tried to add player {} to lobby {} but it's not waiting for players.",
+                player.name, self.name
+            );
+            app_tx.send(AppMessage::LobbyNotWaitingForPlayers {
+                player_tx: player.tx,
+            })?;
+            return Ok(());
+        }
+
         // Insert the player into the player map.
         self.players.insert(player.id, player.clone());
         info!("Added player {} to lobby {}.", player.name, self.name);
@@ -105,10 +127,21 @@ impl Lobby {
 
         // Tell non-playing clients about the new player taking up a seat in
         // this lobby.
-        app_tx.send(AppMessage::SendLobbyListInformation { lobby_id: self.id })?;
+        app_tx.send(AppMessage::SendLobbyPlayerCountUpdate { lobby_id: self.id })?;
 
         // Tell everyone about the update in connections.
         app_tx.send(AppMessage::SendConnectionCounts)?;
+
+        // If the new player is the only player in the lobby, assign the owner
+        // role.
+        if self.players.len() == 1 {
+            self.owner = Some(player.id);
+
+            // Tell the new player that he's the owner.
+            player
+                .tx
+                .send(BackendMessage::AssignOwner { id: player.id })?;
+        }
 
         // Tell the player about his own ID.
         player
@@ -132,8 +165,18 @@ impl Lobby {
             let message = BackendMessage::RemovePlayer(player.id);
             self.broadcast(message)?;
 
+            // Tell connected players about the removal of the lobby owner and
+            // the new assignee.
+            if self.owner.is_some_and(|owner_id| owner_id.eq(&player.id)) {
+                if let Some((player_id, _)) = self.players.first_key_value() {
+                    self.owner = Some(*player_id);
+                    let message = BackendMessage::AssignOwner { id: *player_id };
+                    self.broadcast(message)?;
+                }
+            }
+
             // Tell non-playing clients about the free seat in this lobby.
-            app_tx.send(AppMessage::SendLobbyListInformation { lobby_id: self.id })?;
+            app_tx.send(AppMessage::SendLobbyPlayerCountUpdate { lobby_id: self.id })?;
 
             // Tell everyone about the update in connections.
             app_tx.send(AppMessage::SendConnectionCounts)?;
@@ -142,6 +185,12 @@ impl Lobby {
             if self.players.is_empty() {
                 let app_tx = app_tx.clone();
                 let lobby_id = self.id;
+
+                // Remove the owner, as there are no players in the lobby.
+                self.owner = None;
+                // Also, reset the status and tell the clients about it.
+                self.status = LobbyStatus::WaitingForPlayers;
+                app_tx.send(AppMessage::SendLobbyStatusUpdate { lobby_id: self.id })?;
 
                 // Tell the app to remove the lobby after 30 seconds.
                 tokio::spawn(async move {
