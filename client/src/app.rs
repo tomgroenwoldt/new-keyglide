@@ -212,7 +212,10 @@ impl App {
                         } else if key.eq(&self.config.key_bindings.lobby.toggle_terminal_layout) {
                             lobby.toggle_terminal_layout();
                             lobby.resize(self.size.height, self.size.width)?;
-                        } else if key.eq(&self.config.key_bindings.lobby.start)
+                        }
+                        // Start the lobby as lobby owner.
+                        else if key.eq(&self.config.key_bindings.lobby.start)
+                            && lobby.status == LobbyStatus::WaitingForPlayers
                             && lobby.owner == lobby.local_player
                             && lobby.local_player.is_some()
                         {
