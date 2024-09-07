@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use log::warn;
 use portable_pty::{Child, CommandBuilder};
 use ratatui::layout::{Direction, Size};
@@ -31,10 +31,16 @@ impl Editor {
         app_size: Size,
         lobby_tx: UnboundedSender<LobbyMessage>,
         start_file: Vec<u8>,
+        is_full_screen: bool,
     ) -> Result<Self> {
         // Write the start file bytes to a temporary file.
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(&start_file).unwrap();
+        let mut file = match NamedTempFile::new() {
+            Ok(file) => file,
+            Err(e) => return Err(anyhow!("Error creating temporary file: {e}")),
+        };
+        if let Err(e) = file.write_all(&start_file) {
+            return Err(anyhow!("Error writing to temporary file: {e}"));
+        }
 
         // Build the command that opens the new start file.
         let mut cmd = CommandBuilder::new("helix");
@@ -49,7 +55,7 @@ impl Editor {
 
         Ok(Self {
             terminal,
-            is_full_screen: false,
+            is_full_screen,
             file,
         })
     }

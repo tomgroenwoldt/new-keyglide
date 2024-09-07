@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use common::JoinMode;
+use common::{JoinMode, LobbyStatus};
 use futures_util::SinkExt;
 use log::debug;
 use ratatui::{
@@ -22,7 +22,7 @@ use crate::{
     schema::{
         connection::Connection,
         focused_component::{ComponentKind, FocusedComponent},
-        lobby::Lobby,
+        lobby::{Lobby, LobbyMessage},
         tab::Tab,
     },
     ui,
@@ -190,6 +190,11 @@ impl App {
                             lobby.ws_tx.close().await?;
                             self.connection = Connection::new(self.tx.clone()).await?;
                         }
+                        // Whenever a lobby is about to start, ignore all key
+                        // events except the disconnect one.
+                        else if let LobbyStatus::AboutToStart(_) = lobby.status {
+                            return Ok(());
+                        }
                         // Focus the chat.
                         else if key.eq(&self.config.key_bindings.lobby.focus_chat) {
                             self.focused_component =
@@ -207,6 +212,14 @@ impl App {
                         } else if key.eq(&self.config.key_bindings.lobby.toggle_terminal_layout) {
                             lobby.toggle_terminal_layout();
                             lobby.resize(self.size.height, self.size.width)?;
+                        }
+                        // Start the lobby as lobby owner.
+                        else if key.eq(&self.config.key_bindings.lobby.start)
+                            && lobby.status == LobbyStatus::WaitingForPlayers
+                            && lobby.owner == lobby.local_player
+                            && lobby.local_player.is_some()
+                        {
+                            lobby.tx.send(LobbyMessage::RequestStart)?;
                         }
                     }
                     Connection::Offline(_) => {}

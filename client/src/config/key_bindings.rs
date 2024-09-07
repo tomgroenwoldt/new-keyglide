@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use anyhow::{anyhow, Result};
 use crossterm::event::KeyEvent;
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
@@ -26,6 +28,34 @@ impl KeyBindings {
     }
 }
 
+impl Display for KeyBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut key_binding = format!("<{}", self.code);
+        if let Some(modifier) = self.modifiers {
+            if modifier.contains(KeyModifiers::SHIFT) {
+                key_binding.push_str("+SHIFT");
+            }
+            if modifier.contains(KeyModifiers::CONTROL) {
+                key_binding.push_str("+CTRL");
+            }
+            if modifier.contains(KeyModifiers::ALT) {
+                key_binding.push_str("+ALT");
+            }
+            if modifier.contains(KeyModifiers::SUPER) {
+                key_binding.push_str("+SUPER");
+            }
+            if modifier.contains(KeyModifiers::HYPER) {
+                key_binding.push_str("+HYPER");
+            }
+            if modifier.contains(KeyModifiers::META) {
+                key_binding.push_str("+META");
+            }
+        }
+        key_binding.push('>');
+        write!(f, "{}", key_binding)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, CheckDuplicates)]
 #[serde(rename_all = "kebab-case")]
 pub struct Movement {
@@ -50,6 +80,7 @@ pub struct Lobby {
     pub focus_editor: KeyBinding,
     pub focus_goal: KeyBinding,
     pub toggle_terminal_layout: KeyBinding,
+    pub start: KeyBinding,
 }
 
 #[derive(Clone, Debug, Deserialize, CheckDuplicates)]
@@ -116,6 +147,7 @@ fn string_to_key_code(key_code: String) -> Result<KeyCode> {
 
         // Only single character keys are allowed.
         c if c.len() == 1 => {
+            // Safe to unwrap because we checked the length.
             let c = c.chars().next().unwrap();
             KeyCode::Char(c)
         }

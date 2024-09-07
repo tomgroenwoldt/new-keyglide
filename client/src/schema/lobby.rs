@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use common::{BackendMessage, ChallengeFiles, ClientMessage, JoinMode, LobbyInformation, Player};
+use common::{
+    BackendMessage, ChallengeFiles, ClientMessage, JoinMode, LobbyInformation, LobbyStatus, Player,
+};
 use futures_util::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -27,16 +29,21 @@ pub enum LobbyMessage {
     CloseConnection,
     EditorTerminated,
     GoalTerminated,
+    AssignOwner { id: Uuid },
     PlayerJoined(Player),
     PlayerLeft(Uuid),
     ReceiveMessage(String),
+    RequestStart,
+    StatusUpdate { status: LobbyStatus },
     SendMessage { message: String },
     SetLocalPlayerId { id: Uuid },
 }
 
 pub struct Lobby {
     pub name: String,
+    pub owner: Option<Uuid>,
     pub players: BTreeMap<Uuid, Player>,
+    pub local_player: Option<Uuid>,
     pub encryptions: BTreeMap<Uuid, Encryption>,
     pub chat: Chat,
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
@@ -48,6 +55,7 @@ pub struct Lobby {
     pub goal: Goal,
     pub app_size: Size,
     pub challenge_files: ChallengeFiles,
+    pub status: LobbyStatus,
     /// Whether to display the two editors horizontally or vertically next to
     /// each other.
     pub terminal_layout_direction: Direction,
@@ -86,11 +94,17 @@ impl Lobby {
 
         let mut encryptions = BTreeMap::new();
         for (id, player) in lobby_information.players.iter() {
-            let encryption = Encryption {
+            let mut encryption = Encryption {
                 action: EncryptionAction::Joined,
                 index: 0,
                 value: player.name.clone(),
             };
+            if lobby_information
+                .owner
+                .is_some_and(|owner_id| owner_id.eq(id))
+            {
+                encryption.value.push_str(" (owner)");
+            }
             encryptions.insert(*id, encryption);
         }
 
@@ -98,6 +112,7 @@ impl Lobby {
             app_size,
             tx.clone(),
             lobby_information.challenge_files.start_file.clone(),
+            false,
         )?;
         let terminal_layout_direction = Direction::Vertical;
         editor.resize(app_size.height, app_size.width, terminal_layout_direction)?;
@@ -105,12 +120,15 @@ impl Lobby {
             app_size,
             tx.clone(),
             lobby_information.challenge_files.goal_file.clone(),
+            false,
         )?;
         goal.resize(app_size.height, app_size.width, terminal_layout_direction)?;
 
         Ok(Self {
             name: lobby_information.name,
+            owner: lobby_information.owner,
             players: lobby_information.players,
+            local_player: None,
             encryptions,
             chat: Chat::new(tx.clone()),
             ws_tx,
@@ -120,6 +138,7 @@ impl Lobby {
             goal,
             app_size,
             challenge_files: lobby_information.challenge_files,
+            status: lobby_information.status,
             terminal_layout_direction,
         })
     }
@@ -128,6 +147,20 @@ impl Lobby {
         debug!("Handle message {:?}.", msg);
 
         match msg {
+            LobbyMessage::AssignOwner { id } => {
+                if let Some(player) = self.players.get(&id) {
+                    self.owner = Some(id);
+                    info!(
+                        "Assigned player {} with ID {} lobby owner.",
+                        player.name, player.id
+                    );
+                    if let Some(owner_encryption) = self.encryptions.get_mut(&id) {
+                        owner_encryption.value.push_str(" (owner)");
+                    }
+                } else {
+                    error!("New lobby owner with ID {} was not found!", id);
+                }
+            }
             LobbyMessage::CloseConnection => {
                 info!("Close connection to lobby.");
                 self.ws_tx.close().await?;
@@ -166,7 +199,8 @@ impl Lobby {
                     .await?;
             }
             LobbyMessage::SetLocalPlayerId { id } => {
-                info!("Received clients player ID {} from the backend.", id);
+                info!("Received local player ID {} from the backend.", id);
+                self.local_player = Some(id);
 
                 if let Some(local_player) = self.encryptions.get_mut(&id) {
                     local_player.value.push_str(" (you)");
@@ -178,6 +212,7 @@ impl Lobby {
                     self.app_size,
                     self.tx.clone(),
                     self.challenge_files.start_file.clone(),
+                    self.editor.is_full_screen,
                 )?;
                 self.editor.resize(
                     self.app_size.height,
@@ -191,12 +226,19 @@ impl Lobby {
                     self.app_size,
                     self.tx.clone(),
                     self.challenge_files.goal_file.clone(),
+                    self.goal.is_full_screen,
                 )?;
                 self.goal.resize(
                     self.app_size.height,
                     self.app_size.width,
                     self.terminal_layout_direction,
                 )?;
+            }
+            LobbyMessage::RequestStart => {
+                self.ws_tx.send(ClientMessage::RequestStart.into()).await?;
+            }
+            LobbyMessage::StatusUpdate { status } => {
+                self.status = status;
             }
         }
         Ok(())
@@ -218,6 +260,9 @@ impl Lobby {
                 BackendMessage::ProvidePlayerId { id } => {
                     message_tx.send(LobbyMessage::SetLocalPlayerId { id })?;
                 }
+                BackendMessage::AssignOwner { id } => {
+                    message_tx.send(LobbyMessage::AssignOwner { id })?;
+                }
                 BackendMessage::CloseConnection => {
                     message_tx.send(LobbyMessage::CloseConnection)?;
                 }
@@ -233,8 +278,14 @@ impl Lobby {
                 BackendMessage::LobbyFull => {
                     app_tx.send(AppMessage::DisconnectLobby)?;
                 }
+                BackendMessage::LobbyNotWaitingForPlayers => {
+                    app_tx.send(AppMessage::DisconnectLobby)?;
+                }
                 BackendMessage::ConnectionCounts { clients, players } => {
                     app_tx.send(AppMessage::ConnectionCounts { clients, players })?;
+                }
+                BackendMessage::StatusUpdate { status } => {
+                    message_tx.send(LobbyMessage::StatusUpdate { status })?;
                 }
                 _ => {}
             }

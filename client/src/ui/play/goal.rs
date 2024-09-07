@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub fn draw_goal(f: &mut Frame, app: &App, area: Rect) {
-    let focus_goal_key = format!("<{}>", app.config.key_bindings.lobby.focus_goal.code);
+    let focus_goal_key = format!("{}", app.config.key_bindings.lobby.focus_goal);
     let mut block = Block::bordered()
         .title("Editor")
         .title(Title::from(focus_goal_key).alignment(Alignment::Right));

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.86"
+chrono = { workspace = true }
 common = { path = "../common" }
 fake = "2.9.2"
 futures-util = "0.3.30"

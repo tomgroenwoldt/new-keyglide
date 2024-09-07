@@ -40,25 +40,18 @@ pub async fn handle_connection(ws: WebSocket, app_tx: UnboundedSender<AppMessage
     // Register the new client connection.
     let (client_tx, mut client_rx) = unbounded_channel();
     let client_id = Uuid::new_v4();
-    if let Err(e) = app_tx.send(AppMessage::AddClient {
+    let _ = app_tx.send(AppMessage::AddClient {
         client_id,
         client_tx,
-    }) {
-        error!("Error sending via app channel: {e}");
-    }
-
+    });
     // Tell the client about all current lobbies.
-    if let Err(e) = app_tx.send(AppMessage::CurrentLobbies { client_id }) {
-        error!("Error sending via app channel: {e}");
-    }
+    let _ = app_tx.send(AppMessage::CurrentLobbies { client_id });
 
     // If the client closes his WS connection this task will signal the app to
     // remove him from the current clients.
     tokio::spawn(async move {
         while from_ws.next().await.is_some() {}
-        if let Err(e) = app_tx.send(AppMessage::RemoveClient { client_id }) {
-            error!("Error sending via app channel: {e}");
-        }
+        let _ = app_tx.send(AppMessage::RemoveClient { client_id });
     });
 
     // Forward messages received through the applicaton channel to the client

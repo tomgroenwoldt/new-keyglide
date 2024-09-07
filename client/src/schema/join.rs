@@ -18,7 +18,7 @@ use tokio_tungstenite::{
 };
 use uuid::Uuid;
 
-use common::{constants::MAX_LOBBY_SIZE, BackendMessage, JoinMode, LobbyListItem};
+use common::{constants::MAX_LOBBY_SIZE, BackendMessage, JoinMode, LobbyListItem, LobbyStatus};
 
 use super::encryption::{Encryption, EncryptionAction};
 use crate::{app::AppMessage, config::Config};
@@ -26,17 +26,28 @@ use crate::{app::AppMessage, config::Config};
 pub struct Join {
     pub lobby_list: BTreeMap<Uuid, LobbyListItem>,
     pub selected_lobby: Option<Uuid>,
-    pub encryptions: BTreeMap<Uuid, Encryption>,
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     pub rx: UnboundedReceiver<JoinMessage>,
     pub app_tx: UnboundedSender<AppMessage>,
+
+    pub encrypted_names: BTreeMap<Uuid, Encryption>,
+    pub encrypted_player_counts: BTreeMap<Uuid, Encryption>,
+    pub encrypted_status: BTreeMap<Uuid, Encryption>,
 }
 
 #[derive(Debug)]
 pub enum JoinMessage {
+    /// Updates the table showing current lobbies.
     CurrentLobbies(BTreeMap<Uuid, LobbyListItem>),
+    /// Closes the websocket connection to the backend service.
     CloseConnection,
+    /// Adds a lobby to the lobby list table.
     AddLobby(Uuid, LobbyListItem),
+    /// Updates the player count for a lobby in the lobby list table.
+    UpdateLobbyPlayerCount { id: Uuid, player_count: usize },
+    /// Updates the status for a lobby in the lobby list table.
+    UpdateLobbyStatus { id: Uuid, status: LobbyStatus },
+    /// Removes a lobby from the lobby list table.
     RemoveLobby(Uuid),
 }
 
@@ -56,10 +67,12 @@ impl Join {
         Ok(Self {
             lobby_list: BTreeMap::new(),
             selected_lobby: None,
-            encryptions: BTreeMap::new(),
             ws_tx,
             rx,
             app_tx,
+            encrypted_names: BTreeMap::new(),
+            encrypted_player_counts: BTreeMap::new(),
+            encrypted_status: BTreeMap::new(),
         })
     }
 
@@ -97,14 +110,14 @@ impl Join {
         match msg {
             JoinMessage::CurrentLobbies(lobby_list) => {
                 for (id, lobby) in lobby_list.iter() {
-                    let value =
-                        format!("{} ({}/{})", lobby.name, lobby.player_count, MAX_LOBBY_SIZE);
-                    let encryption = Encryption {
-                        action: EncryptionAction::Joined,
-                        index: 0,
-                        value,
-                    };
-                    self.encryptions.insert(*id, encryption);
+                    self.encrypted_names
+                        .insert(*id, Encryption::new(lobby.name.clone()));
+                    self.encrypted_player_counts.insert(
+                        *id,
+                        Encryption::new(format!("{} / {}", lobby.player_count, MAX_LOBBY_SIZE)),
+                    );
+                    self.encrypted_status
+                        .insert(*id, Encryption::new(lobby.status.to_string()));
                 }
                 self.lobby_list = lobby_list;
             }
@@ -117,21 +130,17 @@ impl Join {
                     "Update lobby list with lobby {} and {} players.",
                     lobby.name, lobby.player_count
                 );
-
-                let value = format!("{} ({}/{})", lobby.name, lobby.player_count, MAX_LOBBY_SIZE);
-                let encryption = Encryption {
-                    action: EncryptionAction::Joined,
-                    index: 0,
-                    value,
-                };
-                self.encryptions.insert(lobby_id, encryption);
+                self.encrypted_names
+                    .insert(lobby_id, Encryption::new(lobby.name.clone()));
+                self.encrypted_player_counts.insert(
+                    lobby_id,
+                    Encryption::new(format!("{} / {}", lobby.player_count, MAX_LOBBY_SIZE)),
+                );
+                self.encrypted_status
+                    .insert(lobby_id, Encryption::new(lobby.status.to_string()));
                 self.lobby_list.insert(lobby_id, lobby);
             }
             JoinMessage::RemoveLobby(lobby_id) => {
-                if let Some(encryption) = self.encryptions.get_mut(&lobby_id) {
-                    encryption.index = encryption.value.len() - 1;
-                    encryption.action = EncryptionAction::Left;
-                }
                 // If the currently selected lobby was removed, unselect it.
                 if let Some(selected_lobby) = self.selected_lobby {
                     if selected_lobby.eq(&lobby_id) {
@@ -139,9 +148,41 @@ impl Join {
                     }
                 }
                 if let Some(lobby) = self.lobby_list.remove(&lobby_id) {
+                    if let Some(encryption) = self.encrypted_names.get_mut(&lobby_id) {
+                        encryption.action = EncryptionAction::Left;
+                        encryption.index = encryption.value.len() - 1;
+                    }
+                    if let Some(encryption) = self.encrypted_player_counts.get_mut(&lobby_id) {
+                        encryption.action = EncryptionAction::Left;
+                        encryption.index = encryption.value.len() - 1;
+                    }
+                    if let Some(encryption) = self.encrypted_status.get_mut(&lobby_id) {
+                        encryption.action = EncryptionAction::Left;
+                        encryption.index = encryption.value.len() - 1;
+                    }
                     info!("Remove lobby {} from lobby list.", lobby.name);
                 } else {
                     error!("Tried to remove a non-existent lobby with ID {}.", lobby_id);
+                }
+            }
+            JoinMessage::UpdateLobbyPlayerCount { id, player_count } => {
+                if let Some(lobby) = self.lobby_list.get_mut(&id) {
+                    self.encrypted_player_counts.insert(
+                        id,
+                        Encryption::new(format!("{} / {}", player_count, MAX_LOBBY_SIZE)),
+                    );
+                    lobby.player_count = player_count;
+                }
+            }
+            JoinMessage::UpdateLobbyStatus { id, status } => {
+                if let Some(lobby) = self.lobby_list.get_mut(&id) {
+                    info!(
+                        "received lobby status update: {}, status: {:?}",
+                        status, self.encrypted_status
+                    );
+                    self.encrypted_status
+                        .insert(id, Encryption::new(status.to_string()));
+                    lobby.status = status;
                 }
             }
         }
@@ -168,7 +209,7 @@ impl Join {
                 BackendMessage::CurrentLobbies(lobbies) => {
                     message_tx.send(JoinMessage::CurrentLobbies(lobbies))?;
                 }
-                BackendMessage::UpdateLobbyList(lobby_id, lobby) => {
+                BackendMessage::AddLobby(lobby_id, lobby) => {
                     message_tx.send(JoinMessage::AddLobby(lobby_id, lobby))?;
                 }
                 BackendMessage::RemoveLobby(lobby_id) => {
@@ -176,6 +217,12 @@ impl Join {
                 }
                 BackendMessage::ConnectionCounts { clients, players } => {
                     app_tx.send(AppMessage::ConnectionCounts { clients, players })?;
+                }
+                BackendMessage::UpdateLobbyPlayerCount { id, player_count } => {
+                    message_tx.send(JoinMessage::UpdateLobbyPlayerCount { id, player_count })?;
+                }
+                BackendMessage::UpdateLobbyStatus { id, status } => {
+                    message_tx.send(JoinMessage::UpdateLobbyStatus { id, status })?;
                 }
                 _ => {}
             }
@@ -193,22 +240,26 @@ impl Join {
     /// Selects the next lobby entry given an already selected lobby. Otherwise
     /// select the first entry.
     pub fn next_lobby_entry(&mut self) {
-        let next_lobby_id = if let Some(lobby_id) = self.selected_lobby {
-            self.lobby_list
+        let lobby_list: BTreeMap<_, _> = self
+            .lobby_list
+            .iter()
+            .filter(|(_, lobby)| lobby.status == LobbyStatus::WaitingForPlayers)
+            .collect();
+        if let Some(next_lobby_id) = if let Some(lobby_id) = self.selected_lobby {
+            lobby_list
                 .range(lobby_id..)
                 .nth(1)
-                .or_else(|| self.lobby_list.range(..=lobby_id).next())
+                .or_else(|| lobby_list.range(..=lobby_id).next())
                 .map(|(id, _)| *id)
         } else {
-            self.lobby_list
-                .first_key_value()
-                .map(|(lobby_id, _)| *lobby_id)
-        };
-        debug!(
-            "Switch from lobby {:?} to next lobby {:?}.",
-            self.selected_lobby, next_lobby_id
-        );
-        self.selected_lobby = next_lobby_id;
+            lobby_list.first_key_value().map(|(lobby_id, _)| *lobby_id)
+        } {
+            debug!(
+                "Switch from lobby {:?} to next lobby {:?}.",
+                self.selected_lobby, next_lobby_id
+            );
+            self.selected_lobby = Some(*next_lobby_id);
+        }
     }
 
     /// # Previous lobby entry
@@ -216,43 +267,75 @@ impl Join {
     /// Selects the previous lobby entry given an already selected lobby. Otherwise
     /// select the last entry.
     pub fn previous_lobby_entry(&mut self) {
-        let previous_lobby_id = if let Some(lobby_id) = self.selected_lobby {
-            self.lobby_list
+        let lobby_list: BTreeMap<_, _> = self
+            .lobby_list
+            .iter()
+            .filter(|(_, lobby)| lobby.status == LobbyStatus::WaitingForPlayers)
+            .collect();
+        if let Some(previous_lobby_id) = if let Some(lobby_id) = self.selected_lobby {
+            lobby_list
                 .range(..lobby_id)
                 .next_back()
-                .or_else(|| self.lobby_list.iter().next_back())
+                .or_else(|| lobby_list.iter().next_back())
                 .map(|(lobby_id, _)| *lobby_id)
         } else {
-            self.lobby_list
-                .last_key_value()
-                .map(|(lobby_id, _)| *lobby_id)
-        };
-        debug!(
-            "Switch from lobby {:?} to previous lobby {:?}.",
-            self.selected_lobby, previous_lobby_id
-        );
-        self.selected_lobby = previous_lobby_id;
+            lobby_list.last_key_value().map(|(lobby_id, _)| *lobby_id)
+        } {
+            debug!(
+                "Switch from lobby {:?} to previous lobby {:?}.",
+                self.selected_lobby, previous_lobby_id
+            );
+            self.selected_lobby = Some(*previous_lobby_id);
+        }
     }
 
     pub fn on_tick(&mut self) {
         let mut encryptions_to_delete = vec![];
 
-        for (id, encryption) in self.encryptions.iter_mut() {
-            match encryption.action {
+        // Zip the three encryption vectors to iterate over triplets.
+        for (((id, name), player_count), status) in self
+            .encrypted_names
+            .iter_mut()
+            .zip(self.encrypted_player_counts.values_mut())
+            .zip(self.encrypted_status.values_mut())
+        {
+            let name_finished = match name.action {
                 EncryptionAction::Joined => {
-                    if encryption.index < encryption.value.len() {
-                        encryption.index += 1;
+                    if name.index < name.value.len() {
+                        name.index += 1;
                     }
+                    false
                 }
-                EncryptionAction::Left => {
-                    if encryption.value.pop().is_none() {
-                        encryptions_to_delete.push(*id);
+                EncryptionAction::Left => name.value.pop().is_none(),
+            };
+            let player_count_finished = match player_count.action {
+                EncryptionAction::Joined => {
+                    if player_count.index < player_count.value.len() {
+                        player_count.index += 1;
                     }
+                    false
                 }
+                EncryptionAction::Left => player_count.value.pop().is_none(),
+            };
+            let status_finished = match status.action {
+                EncryptionAction::Joined => {
+                    if status.index < status.value.len() {
+                        status.index += 1;
+                    }
+                    false
+                }
+                EncryptionAction::Left => status.value.pop().is_none(),
+            };
+            // Only delete encryptions if the encryptions for all three fields
+            // are finished animating.
+            if name_finished && player_count_finished && status_finished {
+                encryptions_to_delete.push(*id);
             }
         }
         for id in encryptions_to_delete {
-            self.encryptions.remove(&id);
+            self.encrypted_names.remove(&id);
+            self.encrypted_player_counts.remove(&id);
+            self.encrypted_status.remove(&id);
         }
     }
 }

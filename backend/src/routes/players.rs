@@ -44,12 +44,11 @@ pub async fn handle_join(ws: WebSocket, app_tx: UnboundedSender<AppMessage>, lob
         from_ws,
         app_tx.clone(),
         player.clone(),
+        lobby_id,
     ));
 
     // Try to add the player to provided lobby.
-    if let Err(e) = app_tx.send(AppMessage::AddPlayerToLobby { lobby_id, player }) {
-        error!("Error sending via app channel: {e}");
-    }
+    let _ = app_tx.send(AppMessage::AddPlayerToLobby { lobby_id, player });
 
     // Forward messages received through the applicaton channel to the client.
     tokio::spawn(forward_backend_message(to_ws, player_rx));
@@ -59,28 +58,28 @@ async fn receive_and_handle_client_message(
     mut from_ws: SplitStream<WebSocket>,
     app_tx: UnboundedSender<AppMessage>,
     player: Player,
+    lobby_id: Uuid,
 ) {
     while let Some(Ok(msg)) = from_ws.next().await {
         if msg.is_close() {
             break;
         }
         let client_message: ClientMessage = serde_json::from_str(msg.to_str().unwrap()).unwrap();
-        match client_message {
-            ClientMessage::SendMessage { message } => {
-                let msg = AppMessage::SendMessage {
-                    player: player.clone(),
-                    message,
-                };
-                if let Err(e) = app_tx.send(msg) {
-                    error!("Error sending via app channel: {e}");
-                }
-            }
+        let msg = match client_message {
+            ClientMessage::SendMessage { message } => AppMessage::SendMessage {
+                player: player.clone(),
+                message,
+                lobby_id,
+            },
+            ClientMessage::RequestStart => AppMessage::RequestStart {
+                player: player.clone(),
+                lobby_id,
+            },
         };
+        let _ = app_tx.send(msg);
     }
     // If the player closes his WS connection remove him from the lobby.
-    if let Err(e) = app_tx.send(AppMessage::RemovePlayer { player }) {
-        error!("Error sending via app channel: {e}");
-    }
+    let _ = app_tx.send(AppMessage::RemovePlayer { player, lobby_id });
 }
 
 async fn forward_backend_message(

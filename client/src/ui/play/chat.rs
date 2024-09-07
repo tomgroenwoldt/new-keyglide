@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub fn draw_chat(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
-    let focus_chat_key = format!("<{}>", app.config.key_bindings.lobby.focus_chat.code);
+    let focus_chat_key = format!("{}", app.config.key_bindings.lobby.focus_chat);
     let mut block = Block::bordered()
         .title("Chat")
         .title(Title::from(focus_chat_key).alignment(Alignment::Right));

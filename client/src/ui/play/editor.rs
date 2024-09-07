@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub fn draw_editor(f: &mut Frame, app: &App, area: Rect) {
-    let focus_editor_key = format!("<{}>", app.config.key_bindings.lobby.focus_editor.code);
+    let focus_editor_key = format!("{}", app.config.key_bindings.lobby.focus_editor);
     let mut block = Block::bordered()
         .title("Editor")
         .title(Title::from(focus_editor_key).alignment(Alignment::Right));
