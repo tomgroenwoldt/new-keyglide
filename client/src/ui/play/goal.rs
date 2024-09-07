@@ -7,24 +7,32 @@ use ratatui::{
 use tui_term::widget::PseudoTerminal;
 
 use crate::{
-    app::App,
-    schema::{connection::Connection, focused_component::ComponentKind},
+    config::Config,
+    schema::{
+        focused_component::{ComponentKind, FocusedComponent},
+        goal::Goal,
+    },
 };
 
-pub fn draw_goal(f: &mut Frame, app: &App, area: Rect) {
-    let focus_goal_key = format!("{}", app.config.key_bindings.lobby.focus_goal);
+pub fn draw_goal(
+    f: &mut Frame,
+    area: Rect,
+    config: &Config,
+    goal: &Goal,
+    focused_component: &Option<FocusedComponent>,
+) {
+    let focus_goal_key = format!("{}", config.key_bindings.lobby.focus_goal);
     let mut block = Block::bordered()
         .title("Editor")
         .title(Title::from(focus_goal_key).alignment(Alignment::Right));
 
-    if app.focused_component_is_kind(ComponentKind::Goal) {
+    if focused_component
+        .as_ref()
+        .is_some_and(|component| component.kind.eq(&ComponentKind::Goal))
+    {
         block = block.border_style(Style::default().fg(Color::Green));
     }
-    let Connection::Lobby(ref lobby) = app.connection else {
-        return;
-    };
-    let parser = lobby
-        .goal
+    let parser = goal
         .terminal
         .parser
         .lock()

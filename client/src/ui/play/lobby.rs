@@ -1,5 +1,4 @@
 use chrono::Utc;
-use common::constants::MAX_LOBBY_SIZE;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     text::Line,
@@ -7,13 +6,15 @@ use ratatui::{
     Frame,
 };
 
+use common::constants::MAX_LOBBY_SIZE;
+
 use crate::{
-    app::App,
+    config::Config,
     schema::{encryption::Encryption, lobby::Lobby},
     ui::get_random_symbol,
 };
 
-pub fn draw_lobby(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
+pub fn draw_lobby(f: &mut Frame, area: Rect, config: &Config, lobby: &mut Lobby) {
     let chunks = Layout::vertical([
         Constraint::Length(MAX_LOBBY_SIZE as u16 + 2),
         Constraint::Min(0),
@@ -56,13 +57,13 @@ pub fn draw_lobby(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
     let players = List::new(encrypted_names).block(block);
     f.render_widget(players, chunks[0]);
 
-    draw_lobby_commands(f, app, chunks[1], lobby);
+    draw_lobby_commands(f, config, chunks[1], lobby);
 }
 
-fn draw_lobby_commands(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
+fn draw_lobby_commands(f: &mut Frame, config: &Config, area: Rect, lobby: &Lobby) {
     let mut commands = vec![format!(
         "{} - Disconnect from the lobby",
-        app.config.key_bindings.lobby.disconnect
+        config.key_bindings.lobby.disconnect
     )];
 
     // Add lobby owner specific commands depending on the lobby status.
@@ -71,7 +72,7 @@ fn draw_lobby_commands(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
             common::LobbyStatus::WaitingForPlayers => {
                 commands.push(format!(
                     "{} - Start the lobby",
-                    app.config.key_bindings.lobby.start
+                    config.key_bindings.lobby.start
                 ));
             }
             common::LobbyStatus::AboutToStart(_) => {}

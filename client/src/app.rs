@@ -221,6 +221,12 @@ impl App {
                         {
                             lobby.tx.send(LobbyMessage::RequestStart)?;
                         }
+                        // Scroll chat down.
+                        else if key.eq(&self.config.key_bindings.movement.down) {
+                            lobby.chat.next();
+                        } else if key.eq(&self.config.key_bindings.movement.up) {
+                            lobby.chat.previous();
+                        }
                     }
                     Connection::Offline(_) => {}
                 }
