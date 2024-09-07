@@ -56,14 +56,31 @@ pub fn draw_lobby(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
     let players = List::new(encrypted_names).block(block);
     f.render_widget(players, chunks[0]);
 
-    // Render a small help section for the lobby owner.
+    draw_lobby_commands(f, app, chunks[1], lobby);
+}
+
+fn draw_lobby_commands(f: &mut Frame, app: &App, area: Rect, lobby: &Lobby) {
+    let mut commands = vec![format!(
+        "{} - Disconnect from the lobby",
+        app.config.key_bindings.lobby.disconnect
+    )];
+
+    // Add lobby owner specific commands depending on the lobby status.
     if lobby.local_player == lobby.owner && lobby.local_player.is_some() {
-        let commands = vec![format!(
-            "{} - Start the lobby",
-            app.config.key_bindings.lobby.start.to_string()
-        )];
-        let block = Block::bordered().title("Owner commands");
-        let command_list = List::new(commands).block(block);
-        f.render_widget(command_list, chunks[1]);
+        match lobby.status {
+            common::LobbyStatus::WaitingForPlayers => {
+                commands.push(format!(
+                    "{} - Start the lobby",
+                    app.config.key_bindings.lobby.start
+                ));
+            }
+            common::LobbyStatus::AboutToStart(_) => {}
+            common::LobbyStatus::InProgress(_) => {}
+            common::LobbyStatus::Finish(_) => {}
+        }
     }
+
+    let block = Block::bordered().title("Lobby commands");
+    let command_list = List::new(commands).block(block);
+    f.render_widget(command_list, area);
 }
