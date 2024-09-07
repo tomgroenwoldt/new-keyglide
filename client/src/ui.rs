@@ -93,7 +93,7 @@ pub fn draw_full_screen(f: &mut Frame, app: &mut App) {
     };
 
     let area = Rect::new(0, 0, app.size.width, app.size.height);
-    match &app.connection {
+    match app.connection {
         Connection::Join(ref join) => match focused_component.kind {
             ComponentKind::Chat
             | ComponentKind::Editor
@@ -101,10 +101,20 @@ pub fn draw_full_screen(f: &mut Frame, app: &mut App) {
             | ComponentKind::ExitPopup => {}
             ComponentKind::Lobbies => draw_join(f, app, area, join),
         },
-        Connection::Lobby(ref lobby) => match focused_component.kind {
-            ComponentKind::Chat => draw_chat(f, app, area, lobby),
-            ComponentKind::Editor => draw_editor(f, app, area),
-            ComponentKind::Goal => draw_goal(f, app, area),
+        Connection::Lobby(ref mut lobby) => match focused_component.kind {
+            ComponentKind::Chat => draw_chat(
+                f,
+                area,
+                &app.config,
+                &mut lobby.chat,
+                &app.focused_component,
+            ),
+            ComponentKind::Editor => {
+                draw_editor(f, area, &app.config, &lobby.editor, &app.focused_component)
+            }
+            ComponentKind::Goal => {
+                draw_goal(f, area, &app.config, &lobby.goal, &app.focused_component)
+            }
             ComponentKind::ExitPopup => draw_exit(f, &app.config),
             ComponentKind::Lobbies => {}
         },

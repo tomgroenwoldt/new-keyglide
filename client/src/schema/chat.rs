@@ -1,47 +1,62 @@
-use std::collections::VecDeque;
-
 use anyhow::Result;
 use log::debug;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
-    text::Line,
+    widgets::TableState,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::lobby::LobbyMessage;
-use crate::constants::CHAT_SIZE;
 
 pub struct Chat {
-    messages: VecDeque<String>,
+    pub messages: Vec<String>,
     pub input: String,
     pub message_tx: UnboundedSender<LobbyMessage>,
+    pub state: TableState,
 }
 
 impl Chat {
     pub fn new(message_tx: UnboundedSender<LobbyMessage>) -> Self {
         Self {
-            messages: VecDeque::new(),
+            messages: Vec::new(),
             input: String::new(),
             message_tx,
+            state: TableState::default(),
         }
     }
 
     pub fn add_message(&mut self, message: String) {
-        debug!("Add message {message} to chat.");
-        self.messages.push_back(message);
-
-        if self.messages.len() > CHAT_SIZE - 3 {
-            self.messages.pop_front();
-        }
+        debug!("Add message '{message}' to chat.");
+        self.messages.push(message);
+        self.state.scroll_down_by(1);
     }
 
-    pub fn to_lines(&self) -> Vec<Line> {
-        let messages: Vec<Line> = self
-            .messages
-            .iter()
-            .map(|msg| Line::from(msg.clone()))
-            .collect();
-        messages
+    pub fn next(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i >= self.messages.len() - 1 {
+                    return;
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    pub fn previous(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    return;
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {

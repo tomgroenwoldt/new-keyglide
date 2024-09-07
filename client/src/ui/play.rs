@@ -6,7 +6,6 @@ use ratatui::{
     Frame,
 };
 
-use common::constants::MAX_LOBBY_SIZE;
 use common::LobbyStatus;
 
 use self::{
@@ -27,18 +26,23 @@ mod lobby;
 
 pub fn draw_play_tab(f: &mut Frame, app: &mut App, area: Rect) {
     match app.connection {
-        Connection::Lobby(ref lobby) => {
+        Connection::Lobby(ref mut lobby) => {
             let horizontal = Layout::horizontal([
                 Constraint::Percentage((PLAY_SIDE_WIDTH * 100.0) as u16),
                 Constraint::Percentage((TERMINAL_WIDTH * 100.0) as u16),
             ])
             .split(area);
             let vertical =
-                Layout::vertical([Constraint::Max(MAX_LOBBY_SIZE as u16), Constraint::Min(0)])
-                    .split(horizontal[0]);
+                Layout::vertical([Constraint::Min(0), Constraint::Min(0)]).split(horizontal[0]);
 
-            draw_lobby(f, app, vertical[0], lobby);
-            draw_chat(f, app, vertical[1], lobby);
+            draw_lobby(f, vertical[0], &app.config, lobby);
+            draw_chat(
+                f,
+                vertical[1],
+                &app.config,
+                &mut lobby.chat,
+                &app.focused_component,
+            );
 
             let layout = Layout::new(
                 lobby.terminal_layout_direction,
@@ -50,8 +54,20 @@ pub fn draw_play_tab(f: &mut Frame, app: &mut App, area: Rect) {
             )
             .split(horizontal[1]);
 
-            draw_editor(f, app, layout[0]);
-            draw_goal(f, app, layout[1]);
+            draw_editor(
+                f,
+                layout[0],
+                &app.config,
+                &lobby.editor,
+                &app.focused_component,
+            );
+            draw_goal(
+                f,
+                layout[1],
+                &app.config,
+                &lobby.goal,
+                &app.focused_component,
+            );
 
             if let LobbyStatus::AboutToStart(start_date) = lobby.status {
                 draw_start_timer(f, area, start_date);
