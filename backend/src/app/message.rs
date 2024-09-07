@@ -1,4 +1,3 @@
-use anyhow::Result;
 use chrono::Utc;
 use tokio::sync::{mpsc::UnboundedSender, oneshot::Sender};
 use tracing::{error, info, warn};
@@ -103,11 +102,14 @@ pub enum AppMessage {
 ///
 /// Manages the app based on received `AppMessage`. The whole app state is
 /// handled in here which allows us to avoid the use of `Mutex` entirely.
-pub async fn handle_app_message(mut app: App) -> Result<()> {
+pub async fn handle_app_message(mut app: App) {
     while let Some(msg) = app.rx.recv().await {
         match msg {
             AppMessage::ProvideLobbyInformation { tx, join_mode } => {
-                let lobby_id = app.get_lobby_id(join_mode)?;
+                let Ok(lobby_id) = app.get_lobby_id(join_mode) else {
+                    error!("Unable to retrieve lobby ID by join mode.");
+                    continue;
+                };
                 let Some(lobby) = app.lobbies.get(&lobby_id) else {
                     error!("Lobby with ID {} was not found.", lobby_id);
                     continue;
@@ -120,14 +122,14 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                     error!("Lobby with ID {} was not found.", lobby_id);
                     continue;
                 };
-                lobby.add_player(player, &app.tx)?;
+                lobby.add_player(player, &app.tx);
             }
             AppMessage::RemovePlayer { player, lobby_id } => {
                 let Some(lobby) = app.lobbies.get_mut(&lobby_id) else {
                     error!("Lobby with ID {} was not found.", lobby_id);
                     continue;
                 };
-                lobby.remove_player(player, &app.tx)?;
+                lobby.remove_player(player, &app.tx);
             }
             AppMessage::SendMessage {
                 player,
@@ -138,12 +140,12 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                     error!("Lobby with ID {} was not found.", lobby_id);
                     continue;
                 };
-                lobby.send_message(player, message.clone())?;
+                lobby.send_message(player, message.clone());
             }
 
             AppMessage::LobbyFull { player_tx } => {
                 let message = BackendMessage::LobbyFull;
-                player_tx.send(message)?;
+                let _ = player_tx.send(message);
             }
 
             AppMessage::CurrentLobbies { client_id } => {
@@ -153,13 +155,17 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 };
                 let lobbies = app.get_current_lobbies();
                 let message = BackendMessage::CurrentLobbies(lobbies);
-                client.send(message)?;
+                let _ = client.send(message);
             }
             AppMessage::AddLobby { lobby_id } => {
-                app.send_lobby_list_information(lobby_id)?;
+                if let Err(e) = app.send_lobby_list_information(lobby_id) {
+                    error!("Error sending lobby list information: {e}");
+                }
             }
             AppMessage::RemoveLobby { lobby_id } => {
-                app.remove_lobby(lobby_id)?;
+                if let Err(e) = app.remove_lobby(lobby_id) {
+                    error!("Error removing lobby: {e}");
+                }
             }
 
             AppMessage::AddClient {
@@ -167,7 +173,7 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 client_tx,
             } => {
                 app.clients.insert(client_id, client_tx);
-                app.tx.send(AppMessage::SendConnectionCounts)?;
+                let _ = app.tx.send(AppMessage::SendConnectionCounts);
                 info!(
                     "Added client with ID {}. Client count is {}.",
                     client_id,
@@ -176,7 +182,7 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
             }
             AppMessage::RemoveClient { client_id } => {
                 app.clients.remove(&client_id);
-                app.tx.send(AppMessage::SendConnectionCounts)?;
+                let _ = app.tx.send(AppMessage::SendConnectionCounts);
                 info!(
                     "Removed client with ID {}. Client count is {}.",
                     client_id,
@@ -190,12 +196,12 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
 
                 // Send counts to all clients.
                 for client in app.clients.values() {
-                    client.send(message.clone())?;
+                    let _ = client.send(message.clone());
                 }
 
                 // Send counts to all players.
                 for lobby in app.lobbies.values() {
-                    lobby.broadcast(message.clone())?;
+                    lobby.broadcast(message.clone());
                 }
             }
             AppMessage::RequestStart { player, lobby_id } => {
@@ -210,12 +216,13 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 {
                     // Change the lobby status and tell clients about it.
                     lobby.status = LobbyStatus::AboutToStart(Utc::now() + LOBBY_START_TIMER);
-                    app.tx
-                        .send(AppMessage::SendLobbyStatusUpdate { lobby_id: lobby.id })?;
+                    let _ = app
+                        .tx
+                        .send(AppMessage::SendLobbyStatusUpdate { lobby_id: lobby.id });
                     // Tell players in the lobby about the status update.
                     lobby.broadcast(BackendMessage::StatusUpdate {
                         status: lobby.status.clone(),
-                    })?;
+                    });
 
                     // Wait for a duration of `LOBBY_START_TIMER` and tell
                     // the application to start the lobby.
@@ -223,9 +230,7 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                     let lobby_id = lobby.id;
                     tokio::spawn(async move {
                         tokio::time::sleep(LOBBY_START_TIMER).await;
-                        if let Err(e) = app_tx.send(AppMessage::Start { lobby_id }) {
-                            error!("Error sending via app channel: {e}");
-                        }
+                        let _ = app_tx.send(AppMessage::Start { lobby_id });
                     });
                 }
             }
@@ -244,25 +249,24 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 };
                 lobby.status = LobbyStatus::InProgress(Utc::now() + MAX_LOBBY_PLAY_TIME);
                 // Tell clients about the started lobby.
-                app.tx
-                    .send(AppMessage::SendLobbyStatusUpdate { lobby_id: lobby.id })?;
+                let _ = app
+                    .tx
+                    .send(AppMessage::SendLobbyStatusUpdate { lobby_id: lobby.id });
                 // Tell players in the lobby about the status update.
                 lobby.broadcast(BackendMessage::StatusUpdate {
                     status: lobby.status.clone(),
-                })?;
+                });
 
                 // Put the lobby in `LobbyStatus::Finish` after two minutes.
                 let app_tx = app.tx.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(MAX_LOBBY_PLAY_TIME).await;
-                    if let Err(e) = app_tx.send(AppMessage::Finish { lobby_id }) {
-                        error!("Error sending via app channel: {e}");
-                    }
+                    let _ = app_tx.send(AppMessage::Finish { lobby_id });
                 });
             }
             AppMessage::LobbyNotWaitingForPlayers { player_tx } => {
                 let message = BackendMessage::LobbyNotWaitingForPlayers;
-                player_tx.send(message)?;
+                let _ = player_tx.send(message);
             }
             AppMessage::SendLobbyPlayerCountUpdate { lobby_id } => {
                 let Some(lobby) = app.lobbies.get(&lobby_id) else {
@@ -270,10 +274,10 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                     continue;
                 };
                 for client in app.clients.values() {
-                    client.send(BackendMessage::UpdateLobbyPlayerCount {
+                    let _ = client.send(BackendMessage::UpdateLobbyPlayerCount {
                         id: lobby_id,
                         player_count: lobby.players.len(),
-                    })?;
+                    });
                 }
             }
             AppMessage::SendLobbyStatusUpdate { lobby_id } => {
@@ -282,10 +286,10 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                     continue;
                 };
                 for client in app.clients.values() {
-                    client.send(BackendMessage::UpdateLobbyStatus {
+                    let _ = client.send(BackendMessage::UpdateLobbyStatus {
                         id: lobby_id,
                         status: lobby.status.clone(),
-                    })?;
+                    });
                 }
             }
             AppMessage::Finish { lobby_id } => {
@@ -295,20 +299,19 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 };
                 lobby.status = LobbyStatus::Finish(Utc::now() + LOBBY_FINISH_TIME);
                 // Tell clients about the finished lobby.
-                app.tx
-                    .send(AppMessage::SendLobbyStatusUpdate { lobby_id: lobby.id })?;
+                let _ = app
+                    .tx
+                    .send(AppMessage::SendLobbyStatusUpdate { lobby_id: lobby.id });
                 // Tell players in the lobby about the status update.
                 lobby.broadcast(BackendMessage::StatusUpdate {
                     status: lobby.status.clone(),
-                })?;
+                });
 
                 // Put the lobby in `LobbyStatus::WaitingForPlayers` after two minutes.
                 let app_tx = app.tx.clone();
                 tokio::spawn(async move {
                     tokio::time::sleep(LOBBY_FINISH_TIME).await;
-                    if let Err(e) = app_tx.send(AppMessage::Reset { lobby_id }) {
-                        error!("Error sending via app channel: {e}");
-                    }
+                    let _ = app_tx.send(AppMessage::Reset { lobby_id });
                 });
             }
             AppMessage::Reset { lobby_id } => {
@@ -318,14 +321,14 @@ pub async fn handle_app_message(mut app: App) -> Result<()> {
                 };
                 lobby.status = LobbyStatus::WaitingForPlayers;
                 // Tell clients about the reset lobby.
-                app.tx
-                    .send(AppMessage::SendLobbyStatusUpdate { lobby_id: lobby.id })?;
+                let _ = app
+                    .tx
+                    .send(AppMessage::SendLobbyStatusUpdate { lobby_id: lobby.id });
                 // Tell players in the lobby about the status update.
                 lobby.broadcast(BackendMessage::StatusUpdate {
                     status: lobby.status.clone(),
-                })?;
+                });
             }
         }
     }
-    Ok(())
 }

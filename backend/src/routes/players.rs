@@ -48,9 +48,7 @@ pub async fn handle_join(ws: WebSocket, app_tx: UnboundedSender<AppMessage>, lob
     ));
 
     // Try to add the player to provided lobby.
-    if let Err(e) = app_tx.send(AppMessage::AddPlayerToLobby { lobby_id, player }) {
-        error!("Error sending via app channel: {e}");
-    }
+    let _ = app_tx.send(AppMessage::AddPlayerToLobby { lobby_id, player });
 
     // Forward messages received through the applicaton channel to the client.
     tokio::spawn(forward_backend_message(to_ws, player_rx));
@@ -78,14 +76,10 @@ async fn receive_and_handle_client_message(
                 lobby_id,
             },
         };
-        if let Err(e) = app_tx.send(msg) {
-            error!("Error sending via app channel: {e}");
-        }
+        let _ = app_tx.send(msg);
     }
     // If the player closes his WS connection remove him from the lobby.
-    if let Err(e) = app_tx.send(AppMessage::RemovePlayer { player, lobby_id }) {
-        error!("Error sending via app channel: {e}");
-    }
+    let _ = app_tx.send(AppMessage::RemovePlayer { player, lobby_id });
 }
 
 async fn forward_backend_message(
