@@ -1,23 +1,35 @@
 use ratatui::{
-    layout::{Alignment, Constraint, Rect},
-    style::{Color, Style, Stylize},
-    widgets::{block::Title, Block, Cell, Row, Table},
+    layout::{Alignment, Constraint, Margin, Rect},
+    style::{Color, Modifier, Style, Stylize},
+    widgets::{block::Title, Block, Cell, Row, Scrollbar, ScrollbarOrientation, Table},
     Frame,
 };
 
 use crate::{
-    app::App,
-    schema::{focused_component::ComponentKind, join::Join},
+    config::Config,
+    schema::{
+        focused_component::{ComponentKind, FocusedComponent},
+        join::Join,
+    },
     ui::get_random_symbol,
 };
 
-pub fn draw_join(f: &mut Frame, app: &App, area: Rect, join: &Join) {
-    let focus_lobby_key = format!("{}", app.config.key_bindings.join.focus_lobby_list);
+pub fn draw_join(
+    f: &mut Frame,
+    config: &Config,
+    area: Rect,
+    join: &mut Join,
+    focused_component: &Option<FocusedComponent>,
+) {
+    let focus_lobby_key = format!("{}", config.key_bindings.join.focus_lobby_list);
     let mut block = Block::bordered()
         .title("Lobbies")
         .title(Title::from(focus_lobby_key).alignment(Alignment::Right));
 
-    if app.focused_component_is_kind(ComponentKind::Lobbies) {
+    if focused_component
+        .as_ref()
+        .is_some_and(|component| component.kind.eq(&ComponentKind::Lobbies))
+    {
         block = block.border_style(Style::default().fg(Color::Green));
     }
 
@@ -26,7 +38,7 @@ pub fn draw_join(f: &mut Frame, app: &App, area: Rect, join: &Join) {
         .iter()
         .zip(join.encrypted_player_counts.values())
         .zip(join.encrypted_status.values())
-        .map(|(((id, name), player_count), status)| {
+        .map(|(((_, name), player_count), status)| {
             let encrypted_name = name
                 .value
                 .chars()
@@ -63,14 +75,11 @@ pub fn draw_join(f: &mut Frame, app: &App, area: Rect, join: &Join) {
                     }
                 })
                 .collect::<String>();
-            let mut row = Row::new(vec![
+            let row = Row::new(vec![
                 Cell::from(encrypted_name),
                 Cell::from(encrypted_player_count),
                 Cell::from(encrypted_status),
             ]);
-            if join.selected_lobby.is_some_and(|lobby_id| lobby_id.eq(id)) {
-                row = row.style(Style::default().fg(Color::Yellow));
-            }
             row
         });
     // Columns widths are constrained in the same way as Layout...
@@ -79,6 +88,9 @@ pub fn draw_join(f: &mut Frame, app: &App, area: Rect, join: &Join) {
         Constraint::Percentage(33),
         Constraint::Percentage(33),
     ];
+    let selected_style = Style::default()
+        .add_modifier(Modifier::REVERSED)
+        .fg(Color::DarkGray);
     let table = Table::new(rows, widths)
         .column_spacing(1)
         .header(
@@ -86,7 +98,19 @@ pub fn draw_join(f: &mut Frame, app: &App, area: Rect, join: &Join) {
                 .style(Style::new().bold())
                 .bottom_margin(1),
         )
-        .block(block);
+        .block(block)
+        .highlight_style(selected_style);
 
-    f.render_widget(table, area);
+    f.render_stateful_widget(table, area, &mut join.state);
+    f.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None),
+        area.inner(Margin {
+            vertical: 1,
+            horizontal: 1,
+        }),
+        &mut join.scroll_state,
+    );
 }

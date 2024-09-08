@@ -6,7 +6,10 @@ use futures_util::{
     SinkExt, StreamExt,
 };
 use log::{debug, error, info};
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::{
+    crossterm::event::KeyEvent,
+    widgets::{ScrollbarState, TableState},
+};
 use tokio::{
     net::TcpStream,
     sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -29,6 +32,8 @@ pub struct Join {
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     pub rx: UnboundedReceiver<JoinMessage>,
     pub app_tx: UnboundedSender<AppMessage>,
+    pub state: TableState,
+    pub scroll_state: ScrollbarState,
 
     pub encrypted_names: BTreeMap<Uuid, Encryption>,
     pub encrypted_player_counts: BTreeMap<Uuid, Encryption>,
@@ -70,6 +75,9 @@ impl Join {
             ws_tx,
             rx,
             app_tx,
+            state: TableState::default(),
+            scroll_state: ScrollbarState::default(),
+
             encrypted_names: BTreeMap::new(),
             encrypted_player_counts: BTreeMap::new(),
             encrypted_status: BTreeMap::new(),
@@ -120,6 +128,7 @@ impl Join {
                         .insert(*id, Encryption::new(lobby.status.to_string()));
                 }
                 self.lobby_list = lobby_list;
+                self.scroll_state = self.scroll_state.content_length(self.lobby_list.len());
             }
             JoinMessage::CloseConnection => {
                 info!("Close non-player connection.");
@@ -139,6 +148,7 @@ impl Join {
                 self.encrypted_status
                     .insert(lobby_id, Encryption::new(lobby.status.to_string()));
                 self.lobby_list.insert(lobby_id, lobby);
+                self.scroll_state = self.scroll_state.content_length(self.lobby_list.len());
             }
             JoinMessage::RemoveLobby(lobby_id) => {
                 // If the currently selected lobby was removed, unselect it.
@@ -148,6 +158,7 @@ impl Join {
                     }
                 }
                 if let Some(lobby) = self.lobby_list.remove(&lobby_id) {
+                    self.scroll_state = self.scroll_state.content_length(self.lobby_list.len());
                     if let Some(encryption) = self.encrypted_names.get_mut(&lobby_id) {
                         encryption.action = EncryptionAction::Left;
                         encryption.index = encryption.value.len() - 1;
@@ -240,26 +251,20 @@ impl Join {
     /// Selects the next lobby entry given an already selected lobby. Otherwise
     /// select the first entry.
     pub fn next_lobby_entry(&mut self) {
-        let lobby_list: BTreeMap<_, _> = self
-            .lobby_list
-            .iter()
-            .filter(|(_, lobby)| lobby.status == LobbyStatus::WaitingForPlayers)
-            .collect();
-        if let Some(next_lobby_id) = if let Some(lobby_id) = self.selected_lobby {
-            lobby_list
-                .range(lobby_id..)
-                .nth(1)
-                .or_else(|| lobby_list.range(..=lobby_id).next())
-                .map(|(id, _)| *id)
-        } else {
-            lobby_list.first_key_value().map(|(lobby_id, _)| *lobby_id)
-        } {
-            debug!(
-                "Switch from lobby {:?} to next lobby {:?}.",
-                self.selected_lobby, next_lobby_id
-            );
-            self.selected_lobby = Some(*next_lobby_id);
-        }
+        let i = match self.state.selected() {
+            Some(i) => {
+                let length = self.lobby_list.len().checked_sub(1).unwrap_or_default();
+                if i >= length {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+        self.selected_lobby = self.lobby_list.keys().cloned().nth(i);
+        self.scroll_state = self.scroll_state.position(i);
     }
 
     /// # Previous lobby entry
@@ -267,26 +272,19 @@ impl Join {
     /// Selects the previous lobby entry given an already selected lobby. Otherwise
     /// select the last entry.
     pub fn previous_lobby_entry(&mut self) {
-        let lobby_list: BTreeMap<_, _> = self
-            .lobby_list
-            .iter()
-            .filter(|(_, lobby)| lobby.status == LobbyStatus::WaitingForPlayers)
-            .collect();
-        if let Some(previous_lobby_id) = if let Some(lobby_id) = self.selected_lobby {
-            lobby_list
-                .range(..lobby_id)
-                .next_back()
-                .or_else(|| lobby_list.iter().next_back())
-                .map(|(lobby_id, _)| *lobby_id)
-        } else {
-            lobby_list.last_key_value().map(|(lobby_id, _)| *lobby_id)
-        } {
-            debug!(
-                "Switch from lobby {:?} to previous lobby {:?}.",
-                self.selected_lobby, previous_lobby_id
-            );
-            self.selected_lobby = Some(*previous_lobby_id);
-        }
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.lobby_list.len().checked_sub(1).unwrap_or_default()
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+        self.selected_lobby = self.lobby_list.keys().cloned().nth(i);
+        self.scroll_state = self.scroll_state.position(i);
     }
 
     pub fn on_tick(&mut self) {
