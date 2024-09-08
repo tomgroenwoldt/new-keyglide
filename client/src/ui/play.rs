@@ -74,8 +74,8 @@ pub fn draw_play_tab(f: &mut Frame, app: &mut App, area: Rect) {
             }
         }
         // If we are not connected to a lobby, draw the join form.
-        Connection::Join(ref join) => {
-            draw_join(f, app, area, join);
+        Connection::Join(ref mut join) => {
+            draw_join(f, &app.config, area, join, &app.focused_component);
         }
         Connection::Offline(_) => {}
     }
