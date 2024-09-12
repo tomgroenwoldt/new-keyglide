@@ -1,10 +1,9 @@
-use std::io::Write;
+use std::{env::temp_dir, fs::File, io::Write};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use log::warn;
 use portable_pty::{Child, CommandBuilder};
 use ratatui::layout::{Direction, Size};
-use tempfile::NamedTempFile;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::constants::{GOAL_HEIGHT, TERMINAL_WIDTH};
@@ -14,10 +13,6 @@ use super::{lobby::LobbyMessage, terminal::Terminal};
 pub struct Goal {
     pub terminal: Terminal,
     pub is_full_screen: bool,
-    /// The file the editor is operating on. We keep this inside this struct to
-    /// prevent dropping the file (and thereby deleting it).
-    #[allow(dead_code)]
-    pub file: NamedTempFile,
 }
 
 impl Goal {
@@ -32,13 +27,21 @@ impl Goal {
         is_full_screen: bool,
     ) -> Result<Self> {
         // Write the start file bytes to a temporary file.
-        let mut file = NamedTempFile::new()?;
-        file.write_all(&goal_file)?;
+        let mut path = temp_dir();
+        path.push("goal.txt");
+
+        let mut file = match File::create(&path) {
+            Ok(file) => file,
+            Err(e) => return Err(anyhow!("Error creating file: {e}")),
+        };
+        if let Err(e) = file.write_all(&goal_file) {
+            return Err(anyhow!("Error writing to file: {e}"));
+        }
 
         // Build the command that opens the goal file fetched from the backend
         // service.
         let mut cmd = CommandBuilder::new("helix");
-        cmd.arg(file.path());
+        cmd.arg(&path);
 
         // Build the terminal and resize it directly.
         let (terminal, child) = Terminal::new(app_size, cmd)?;
@@ -48,7 +51,6 @@ impl Goal {
         Ok(Self {
             terminal,
             is_full_screen,
-            file,
         })
     }
 

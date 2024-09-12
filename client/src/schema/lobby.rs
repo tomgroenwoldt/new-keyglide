@@ -22,7 +22,13 @@ use super::{
     editor::Editor,
     encryption::{Encryption, EncryptionAction},
 };
-use crate::{app::AppMessage, schema::goal::Goal};
+use crate::{
+    app::AppMessage,
+    schema::{
+        focused_component::{ComponentKind, FocusedComponent},
+        goal::Goal,
+    },
+};
 
 #[derive(Debug)]
 pub enum LobbyMessage {
@@ -36,7 +42,9 @@ pub enum LobbyMessage {
     RequestStart,
     StatusUpdate { status: LobbyStatus },
     SendMessage { message: String },
+    SendProgress { progress: Vec<u8> },
     SetLocalPlayerId { id: Uuid },
+    UpdatePlayerProgress { player_id: Uuid, progress: f64 },
 }
 
 pub struct Lobby {
@@ -240,6 +248,24 @@ impl Lobby {
             LobbyMessage::StatusUpdate { status } => {
                 self.status = status;
             }
+            LobbyMessage::SendProgress { progress } => {
+                self.ws_tx
+                    .send(ClientMessage::Progress { progress }.into())
+                    .await?;
+            }
+            LobbyMessage::UpdatePlayerProgress {
+                player_id,
+                progress,
+            } => {
+                if let Some(player) = self.players.get_mut(&player_id) {
+                    player.progress = progress;
+                } else {
+                    error!(
+                        "Tried to update progress of non-existent player with ID {}.",
+                        player_id
+                    );
+                }
+            }
         }
         Ok(())
     }
@@ -285,7 +311,25 @@ impl Lobby {
                     app_tx.send(AppMessage::ConnectionCounts { clients, players })?;
                 }
                 BackendMessage::StatusUpdate { status } => {
+                    let component_to_focus = match status {
+                        LobbyStatus::WaitingForPlayers
+                        | LobbyStatus::AboutToStart(_)
+                        | LobbyStatus::Finish(_) => None,
+                        LobbyStatus::InProgress(_) => {
+                            Some(FocusedComponent::new(ComponentKind::Editor))
+                        }
+                    };
+                    app_tx.send(AppMessage::FocusComponent(component_to_focus))?;
                     message_tx.send(LobbyMessage::StatusUpdate { status })?;
+                }
+                BackendMessage::UpdatePlayerProgress {
+                    player_id,
+                    progress,
+                } => {
+                    message_tx.send(LobbyMessage::UpdatePlayerProgress {
+                        player_id,
+                        progress,
+                    })?;
                 }
                 _ => {}
             }

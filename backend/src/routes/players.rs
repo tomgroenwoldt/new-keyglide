@@ -75,6 +75,11 @@ async fn receive_and_handle_client_message(
                 player: player.clone(),
                 lobby_id,
             },
+            ClientMessage::Progress { progress } => AppMessage::ComputePlayerProgress {
+                lobby_id,
+                player_id: player.id,
+                progress,
+            },
         };
         let _ = app_tx.send(msg);
     }
