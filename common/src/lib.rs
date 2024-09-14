@@ -11,6 +11,7 @@ pub mod constants;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientMessage {
+    Progress { progress: Vec<u8> },
     SendMessage { message: String },
     RequestStart,
 }
@@ -40,6 +41,7 @@ impl From<Message> for BackendMessage {
 pub struct Player {
     pub id: Uuid,
     pub name: String,
+    pub progress: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -133,6 +135,7 @@ pub enum BackendMessage {
     AddPlayer(Player),
     RemovePlayer(Uuid),
     StatusUpdate { status: LobbyStatus },
+    UpdatePlayerProgress { player_id: Uuid, progress: f64 },
 
     SendMessage(String),
     CloseConnection,

@@ -9,6 +9,7 @@ pub struct Player {
     pub id: Uuid,
     pub name: String,
     pub tx: UnboundedSender<BackendMessage>,
+    pub progress: f64,
 }
 
 impl Player {
@@ -17,6 +18,7 @@ impl Player {
             id: Uuid::new_v4(),
             name: Name(EN).fake(),
             tx,
+            progress: 0.0,
         }
     }
 
@@ -24,6 +26,7 @@ impl Player {
         common::Player {
             id: self.id,
             name: self.name.clone(),
+            progress: self.progress,
         }
     }
 }

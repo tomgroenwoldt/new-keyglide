@@ -54,7 +54,13 @@ impl Lobby {
     ///
     /// Sends a message to every player inside the lobby.
     pub fn broadcast(&self, msg: BackendMessage) {
-        for Player { id: _, name: _, tx } in self.players.values() {
+        for Player {
+            id: _,
+            name: _,
+            tx,
+            progress: _,
+        } in self.players.values()
+        {
             let _ = tx.send(msg.clone());
         }
     }

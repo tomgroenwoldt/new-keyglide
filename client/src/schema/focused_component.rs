@@ -1,16 +1,18 @@
 use anyhow::{anyhow, Result};
+use common::LobbyStatus;
 use log::debug;
 use ratatui::crossterm::event::KeyEvent;
 
 use super::connection::Connection;
 use crate::app::App;
 
+#[derive(Debug)]
 pub struct FocusedComponent {
     pub kind: ComponentKind,
     pub is_full_screen: bool,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ComponentKind {
     Chat,
     Editor,
@@ -91,7 +93,10 @@ impl FocusedComponent {
             }
             ComponentKind::Editor => {
                 if let Connection::Lobby(ref mut lobby) = app.connection {
-                    lobby.editor.terminal.handle_key_event(key)?;
+                    // Only allow to edit the file if the lobby is in progress.
+                    if let LobbyStatus::InProgress(_) = lobby.status {
+                        lobby.editor.terminal.handle_key_event(key)?;
+                    }
                 }
             }
             ComponentKind::Goal => {}

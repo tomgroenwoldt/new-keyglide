@@ -1,8 +1,8 @@
 use chrono::Utc;
 use ratatui::{
-    layout::{Constraint, Layout, Rect},
+    layout::{Constraint, Layout, Margin, Rect},
     text::Line,
-    widgets::{Block, List},
+    widgets::{Block, Gauge, List},
     Frame,
 };
 
@@ -16,7 +16,7 @@ use crate::{
 
 pub fn draw_lobby(f: &mut Frame, area: Rect, config: &Config, lobby: &mut Lobby) {
     let chunks = Layout::vertical([
-        Constraint::Length(MAX_LOBBY_SIZE as u16 + 2),
+        Constraint::Length((MAX_LOBBY_SIZE * 3) as u16 + 2),
         Constraint::Min(0),
     ])
     .split(area);
@@ -41,22 +41,35 @@ pub fn draw_lobby(f: &mut Frame, area: Rect, config: &Config, lobby: &mut Lobby)
         block = block.title_bottom(Line::from(text).right_aligned());
     }
 
-    let encrypted_names = lobby.encryptions.values().map(
-        |Encryption {
-             action: _,
-             index,
-             value,
-         }| {
-            value
-                .chars()
-                .enumerate()
-                .map(|(i, c)| if i < *index { c } else { get_random_symbol() })
-                .collect::<String>()
-        },
-    );
-    let players = List::new(encrypted_names).block(block);
-    f.render_widget(players, chunks[0]);
-
+    // We split the lobby section into multiple chunks. Each chunks holds
+    // one player and is exactly three rows high. This is due to the gauge +
+    // bordered block we render per player.
+    let constraints = (0..lobby.encryptions.len()).map(|_| Constraint::Length(3));
+    let inner_chunks = Layout::vertical(constraints).split(chunks[0].inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    }));
+    for (i, encryption) in lobby.encryptions.iter().enumerate() {
+        let (
+            player_id,
+            Encryption {
+                action: _,
+                index,
+                value,
+            },
+        ) = encryption;
+        let encryption = value
+            .chars()
+            .enumerate()
+            .map(|(i, c)| if i < *index { c } else { get_random_symbol() })
+            .collect::<String>();
+        let mut gauge = Gauge::default().block(Block::bordered().title(encryption));
+        if let Some(player) = lobby.players.get(player_id) {
+            gauge = gauge.ratio(player.progress);
+        };
+        f.render_widget(gauge, inner_chunks[i]);
+    }
+    f.render_widget(block, chunks[0]);
     draw_lobby_commands(f, config, chunks[1], lobby);
 }
 

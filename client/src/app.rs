@@ -52,12 +52,18 @@ pub struct App {
 
 #[derive(Debug)]
 pub enum AppMessage {
+    FocusComponent(Option<FocusedComponent>),
     /// Connects to a lobby via the given join mode.
-    ConnectToLobby { join_mode: JoinMode },
+    ConnectToLobby {
+        join_mode: JoinMode,
+    },
     /// Disconnects the client from the current lobby.
     DisconnectLobby,
     /// Updates the total connection count on the home page.
-    ConnectionCounts { players: usize, clients: usize },
+    ConnectionCounts {
+        players: usize,
+        clients: usize,
+    },
     /// The backend connection was closed. The app tries to reconnnect.
     ServiceDisconnected,
     /// The backend is back online.
@@ -266,6 +272,9 @@ impl App {
             AppMessage::ConnectionCounts { players, clients } => {
                 self.total_clients = clients;
                 self.total_players = players;
+            }
+            AppMessage::FocusComponent(component) => {
+                self.focused_component = component;
             }
         }
         Ok(())

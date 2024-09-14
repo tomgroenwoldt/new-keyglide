@@ -1,4 +1,5 @@
 use chrono::Utc;
+use strsim::normalized_levenshtein;
 use tokio::sync::{mpsc::UnboundedSender, oneshot::Sender};
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -7,7 +8,9 @@ use common::{BackendMessage, JoinMode, LobbyInformation, LobbyStatus};
 
 use super::App;
 use crate::{
-    constants::{LOBBY_FINISH_TIME, LOBBY_START_TIMER, MAX_LOBBY_PLAY_TIME},
+    constants::{
+        LOBBY_FINISH_TIME, LOBBY_START_TIMER, MAX_LOBBY_PLAY_TIME, REDUCED_LOBBY_PLAY_TIME,
+    },
     player::Player,
 };
 
@@ -95,6 +98,13 @@ pub enum AppMessage {
     /// Resets the game inside a lobby.
     Reset {
         lobby_id: Uuid,
+    },
+    /// Computes the levenshtein distance between the goal file and the current
+    /// state of the player's start file and sets the player's progress.
+    ComputePlayerProgress {
+        lobby_id: Uuid,
+        player_id: Uuid,
+        progress: Vec<u8>,
     },
 }
 
@@ -297,6 +307,9 @@ pub async fn handle_app_message(mut app: App) {
                     error!("Lobby with ID {} was not found.", lobby_id);
                     continue;
                 };
+                let LobbyStatus::InProgress(_) = lobby.status else {
+                    continue;
+                };
                 lobby.status = LobbyStatus::Finish(Utc::now() + LOBBY_FINISH_TIME);
                 // Tell clients about the finished lobby.
                 let _ = app
@@ -319,6 +332,21 @@ pub async fn handle_app_message(mut app: App) {
                     error!("Lobby with ID {} was not found.", lobby_id);
                     continue;
                 };
+
+                // Reset all players progress.
+                for player in lobby.players.values_mut() {
+                    player.progress = 0.0;
+                }
+
+                lobby.players.values().for_each(|player| {
+                    // Tell players in the lobby about the progress reset of each
+                    // player.
+                    lobby.broadcast(BackendMessage::UpdatePlayerProgress {
+                        player_id: player.id,
+                        progress: player.progress,
+                    });
+                });
+
                 lobby.status = LobbyStatus::WaitingForPlayers;
                 // Tell clients about the reset lobby.
                 let _ = app
@@ -327,6 +355,88 @@ pub async fn handle_app_message(mut app: App) {
                 // Tell players in the lobby about the status update.
                 lobby.broadcast(BackendMessage::StatusUpdate {
                     status: lobby.status.clone(),
+                });
+            }
+            AppMessage::ComputePlayerProgress {
+                lobby_id,
+                player_id,
+                progress,
+            } => {
+                let Some(lobby) = app.lobbies.get_mut(&lobby_id) else {
+                    error!("Lobby with ID {} was not found.", lobby_id);
+                    continue;
+                };
+                let finished_player_count = lobby
+                    .players
+                    .values()
+                    .filter(|player| player.progress == 1.0)
+                    .count();
+                let Some(player) = lobby.players.get_mut(&player_id) else {
+                    error!(
+                        "Player with ID {} was not found in lobby {}.",
+                        player_id, lobby.name
+                    );
+                    continue;
+                };
+
+                // We only allow players to progress when the lobby is currently
+                // in progress.
+                let LobbyStatus::InProgress(_) = lobby.status else {
+                    warn!(
+                        "Player {} tried to progress in lobby {} that is not in progress.",
+                        player.name, lobby.name
+                    );
+                    continue;
+                };
+                let goal_file = match std::str::from_utf8(&lobby.challenge_files.goal_file) {
+                    Ok(goal_file) => goal_file,
+                    Err(e) => {
+                        error!("Error converting goal file bytes to string: {e}");
+                        continue;
+                    }
+                };
+                let player_file = match std::str::from_utf8(&progress) {
+                    Ok(player_file) => player_file,
+                    Err(e) => {
+                        error!("Error converting player file bytes to string: {e}");
+                        continue;
+                    }
+                };
+
+                // Compute the levenshtein distance between goal and player
+                // file.
+                let progress = normalized_levenshtein(goal_file, player_file);
+                player.progress = progress;
+
+                // If a player won we reduce the lobby lifetime and tell all
+                // players about it.
+                if progress.eq(&1.0) {
+                    lobby.status = LobbyStatus::InProgress(Utc::now() + REDUCED_LOBBY_PLAY_TIME);
+                    let app_tx = app.tx.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(REDUCED_LOBBY_PLAY_TIME).await;
+                        let _ = app_tx.send(AppMessage::Finish { lobby_id });
+                    });
+
+                    // Tell players that the player finished.
+                    let message = format!(
+                        "Player {} finished in position {}!",
+                        player.name,
+                        finished_player_count + 1
+                    );
+                    lobby.broadcast(BackendMessage::SendMessage(message));
+
+                    // Tell players in the lobby about the status update.
+                    lobby.broadcast(BackendMessage::StatusUpdate {
+                        status: lobby.status.clone(),
+                    });
+                }
+
+                // Tell players in the lobby about the progress update of this
+                // player.
+                lobby.broadcast(BackendMessage::UpdatePlayerProgress {
+                    player_id,
+                    progress,
                 });
             }
         }
