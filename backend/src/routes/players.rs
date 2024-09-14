@@ -12,7 +12,7 @@ use warp::{
     Filter,
 };
 
-use common::{BackendMessage, ClientMessage};
+use common::{constants::MAX_CHAT_MESSAGE_LENGTH, BackendMessage, ClientMessage};
 
 use crate::{player::Player, AppMessage};
 
@@ -76,11 +76,21 @@ async fn receive_and_handle_client_message(
             }
         };
         let msg = match client_message {
-            ClientMessage::SendMessage { message } => AppMessage::SendMessage {
-                player: player.clone(),
-                message,
-                lobby_id,
-            },
+            ClientMessage::SendMessage { message } => {
+                let message_length = message.len();
+                if message_length > MAX_CHAT_MESSAGE_LENGTH {
+                    error!(
+                        "Player tried to send chat message of length: {}",
+                        message_length
+                    );
+                    continue;
+                }
+                AppMessage::SendMessage {
+                    player: player.clone(),
+                    message,
+                    lobby_id,
+                }
+            }
             ClientMessage::RequestStart => AppMessage::RequestStart {
                 player: player.clone(),
                 lobby_id,
