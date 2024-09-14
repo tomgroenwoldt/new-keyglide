@@ -64,7 +64,17 @@ async fn receive_and_handle_client_message(
         if msg.is_close() {
             break;
         }
-        let client_message: ClientMessage = serde_json::from_str(msg.to_str().unwrap()).unwrap();
+        let Ok(text) = msg.to_str() else {
+            error!("Received non-text message from client.");
+            continue;
+        };
+        let client_message = match serde_json::from_str::<ClientMessage>(text) {
+            Ok(message) => message,
+            Err(e) => {
+                error!("Error deserializing client message: {e}");
+                continue;
+            }
+        };
         let msg = match client_message {
             ClientMessage::SendMessage { message } => AppMessage::SendMessage {
                 player: player.clone(),

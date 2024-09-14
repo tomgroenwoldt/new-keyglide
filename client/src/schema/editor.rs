@@ -152,7 +152,13 @@ async fn watch_progress<P: AsRef<Path>>(
         match res {
             Ok(event) if event.paths.contains(&file_path) => {
                 if let EventKind::Modify(ModifyKind::Data(_)) = event.kind {
-                    let progress = fs::read(&file_path).unwrap();
+                    let progress = match fs::read(&file_path) {
+                        Ok(progress) => progress,
+                        Err(e) => {
+                            error!("Error reading player start file: {e}");
+                            continue;
+                        }
+                    };
                     if let Err(e) = lobby_tx.send(LobbyMessage::SendProgress { progress }) {
                         error!("Error sending player progress via lobby channel: {e}");
                     }

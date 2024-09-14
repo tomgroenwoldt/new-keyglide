@@ -125,5 +125,5 @@ pub fn draw_full_screen(f: &mut Frame, app: &mut App) {
 pub fn get_random_symbol() -> char {
     let mut rng = thread_rng();
     let idx = rng.gen_range(0..SYMBOLS.len());
-    SYMBOLS.chars().nth(idx).unwrap()
+    SYMBOLS.chars().nth(idx).unwrap_or('.')
 }
