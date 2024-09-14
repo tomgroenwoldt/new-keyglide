@@ -1,4 +1,5 @@
 use anyhow::Result;
+use common::constants::MAX_CHAT_MESSAGE_LENGTH;
 use log::debug;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
@@ -64,7 +65,9 @@ impl Chat {
 
         match key.code {
             KeyCode::Char(input) => {
-                self.input.push(input);
+                if self.input.len() < MAX_CHAT_MESSAGE_LENGTH {
+                    self.input.push(input);
+                }
             }
             KeyCode::Backspace => {
                 self.input.pop();
