@@ -147,11 +147,13 @@ fn string_to_key_code(key_code: String) -> Result<KeyCode> {
 
         // Only single character keys are allowed.
         c if c.len() == 1 => {
-            // Safe to unwrap because we checked the length.
-            let c = c.chars().next().unwrap();
-            KeyCode::Char(c)
+            if let Some(c) = c.chars().next() {
+                KeyCode::Char(c)
+            } else {
+                return Err(anyhow!("Empty key code, even though we checked before."));
+            }
         }
-        _ => return Err(anyhow!("Key codes must be exactly one character long.")),
+        _ => return Err(anyhow!("Invalid key code.")),
     };
     Ok(code)
 }
