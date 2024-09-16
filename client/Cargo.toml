@@ -7,7 +7,7 @@ edition = "2021"
 audio = ["dep:rodio"]
 
 [dependencies]
-anyhow = "1.0.86"
+anyhow = "1.0.89"
 bytes = "1.7.1"
 chrono = { workspace = true }
 clap = { version = "4.5.17", features = ["derive"] }
