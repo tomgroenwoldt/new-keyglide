@@ -42,6 +42,7 @@ pub struct Player {
     pub id: Uuid,
     pub name: String,
     pub progress: f64,
+    pub waiting: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

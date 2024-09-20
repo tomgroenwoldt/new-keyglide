@@ -59,6 +59,7 @@ impl Lobby {
             name: _,
             tx,
             progress: _,
+            waiting: _,
         } in self.players.values()
         {
             let _ = tx.send(msg.clone());
@@ -93,7 +94,7 @@ impl Lobby {
     /// Adds a player to the lobby. If the lobby is full, tell the player about
     /// that and prevent the addition. If the player successfully joined the
     /// lobby tell him the lobby name.
-    pub fn add_player(&mut self, player: Player, app_tx: &UnboundedSender<AppMessage>) {
+    pub fn add_player(&mut self, mut player: Player, app_tx: &UnboundedSender<AppMessage>) {
         // Return early if the lobby is full.
         if self.players.len() >= MAX_LOBBY_SIZE {
             warn!(
@@ -106,18 +107,12 @@ impl Lobby {
             return;
         }
 
+        // Flag the player as waiting as the lobby is currently not waiting for
+        // any active players.
         if self.status != LobbyStatus::WaitingForPlayers {
-            warn!(
-                "Tried to add player {} to lobby {} but it's not waiting for players.",
-                player.name, self.name
-            );
-            let _ = app_tx.send(AppMessage::LobbyNotWaitingForPlayers {
-                player_tx: player.tx,
-            });
-            return;
+            player.waiting = true;
         }
-
-        // Insert the player into the player map.
+        // Add the player to the actual player room.
         self.players.insert(player.id, player.clone());
         info!("Added player {} to lobby {}.", player.name, self.name);
 
@@ -153,50 +148,46 @@ impl Lobby {
     ///
     /// Removes a player from the lobby if he exists.
     pub fn remove_player(&mut self, player: Player, app_tx: &UnboundedSender<AppMessage>) {
-        if let Some(player) = self.players.remove(&player.id) {
-            info!("Removed player {} from lobby {}.", player.name, self.name);
-            // Tell connected players about the removal of this player.
-            let message = BackendMessage::RemovePlayer(player.id);
-            self.broadcast(message);
+        let Some(player) = self.players.remove(&player.id) else {
+            return;
+        };
+        info!("Removed player {} from lobby {}.", player.name, self.name);
+        // Tell connected players about the removal of this player.
+        let message = BackendMessage::RemovePlayer(player.id);
+        self.broadcast(message);
 
-            // Tell connected players about the removal of the lobby owner and
-            // the new assignee.
-            if self.owner.is_some_and(|owner_id| owner_id.eq(&player.id)) {
-                if let Some((player_id, _)) = self.players.first_key_value() {
-                    self.owner = Some(*player_id);
-                    let message = BackendMessage::AssignOwner { id: *player_id };
-                    self.broadcast(message);
-                }
+        // Tell connected players about the removal of the lobby owner and
+        // the new assignee.
+        if self.owner.is_some_and(|owner_id| owner_id.eq(&player.id)) {
+            if let Some((player_id, _)) = self.players.first_key_value() {
+                self.owner = Some(*player_id);
+                let message = BackendMessage::AssignOwner { id: *player_id };
+                self.broadcast(message);
             }
+        }
 
-            // Tell non-playing clients about the free seat in this lobby.
-            let _ = app_tx.send(AppMessage::SendLobbyPlayerCountUpdate { lobby_id: self.id });
+        // Tell non-playing clients about the free seat in this lobby.
+        let _ = app_tx.send(AppMessage::SendLobbyPlayerCountUpdate { lobby_id: self.id });
 
-            // Tell everyone about the update in connections.
-            let _ = app_tx.send(AppMessage::SendConnectionCounts);
+        // Tell everyone about the update in connections.
+        let _ = app_tx.send(AppMessage::SendConnectionCounts);
 
-            // Now, if the lobby is empty, tell the app to remove this lobby.
-            if self.players.is_empty() {
-                let app_tx = app_tx.clone();
-                let lobby_id = self.id;
+        // Now, if the lobby is empty, tell the app to remove this lobby.
+        if self.players.is_empty() {
+            let app_tx = app_tx.clone();
+            let lobby_id = self.id;
 
-                // Remove the owner, as there are no players in the lobby.
-                self.owner = None;
-                // Also, reset the status and tell the clients about it.
-                self.status = LobbyStatus::WaitingForPlayers;
-                let _ = app_tx.send(AppMessage::SendLobbyStatusUpdate { lobby_id: self.id });
+            // Remove the owner, as there are no players in the lobby.
+            self.owner = None;
+            // Also, reset the status and tell the clients about it.
+            self.status = LobbyStatus::WaitingForPlayers;
+            let _ = app_tx.send(AppMessage::SendLobbyStatusUpdate { lobby_id: self.id });
 
-                // Tell the app to remove the lobby after 30 seconds.
-                tokio::spawn(async move {
-                    tokio::time::sleep(EMPTY_LOBBY_LIFETIME).await;
-                    let _ = app_tx.send(AppMessage::RemoveLobby { lobby_id });
-                });
-            }
-        } else {
-            error!(
-                "Player {} was not found in lobby {}.",
-                player.name, self.name
-            );
+            // Tell the app to remove the lobby after 30 seconds.
+            tokio::spawn(async move {
+                tokio::time::sleep(EMPTY_LOBBY_LIFETIME).await;
+                let _ = app_tx.send(AppMessage::RemoveLobby { lobby_id });
+            });
         }
     }
 

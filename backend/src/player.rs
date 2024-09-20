@@ -10,6 +10,7 @@ pub struct Player {
     pub name: String,
     pub tx: UnboundedSender<BackendMessage>,
     pub progress: f64,
+    pub waiting: bool,
 }
 
 impl Player {
@@ -19,6 +20,7 @@ impl Player {
             name: Name(EN).fake(),
             tx,
             progress: 0.0,
+            waiting: false,
         }
     }
 
@@ -27,6 +29,7 @@ impl Player {
             id: self.id,
             name: self.name.clone(),
             progress: self.progress,
+            waiting: self.waiting,
         }
     }
 }
