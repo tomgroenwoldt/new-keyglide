@@ -64,11 +64,6 @@ pub enum AppMessage {
     LobbyFull {
         player_tx: UnboundedSender<BackendMessage>,
     },
-    /// Tells a player that the lobby he is trying to connect to is not
-    /// waiting for any players.
-    LobbyNotWaitingForPlayers {
-        player_tx: UnboundedSender<BackendMessage>,
-    },
     /// Broadcasts the current amount of connected clients and players to
     /// clients and players.
     SendConnectionCounts,
@@ -274,10 +269,6 @@ pub async fn handle_app_message(mut app: App) {
                     let _ = app_tx.send(AppMessage::Finish { lobby_id });
                 });
             }
-            AppMessage::LobbyNotWaitingForPlayers { player_tx } => {
-                let message = BackendMessage::LobbyNotWaitingForPlayers;
-                let _ = player_tx.send(message);
-            }
             AppMessage::SendLobbyPlayerCountUpdate { lobby_id } => {
                 let Some(lobby) = app.lobbies.get(&lobby_id) else {
                     error!("Lobby with ID {} was not found.", lobby_id);
@@ -378,6 +369,14 @@ pub async fn handle_app_message(mut app: App) {
                     );
                     continue;
                 };
+
+                if player.waiting {
+                    warn!(
+                        "Waiting player {} tried to progress in lobby {}.",
+                        player.name, lobby.name
+                    );
+                    continue;
+                }
 
                 // We only allow players to progress when the lobby is currently
                 // in progress.

@@ -6,8 +6,6 @@ use ratatui::{
     Frame,
 };
 
-use common::constants::MAX_LOBBY_SIZE;
-
 use crate::{
     config::Config,
     schema::{encryption::Encryption, lobby::Lobby},
@@ -15,11 +13,16 @@ use crate::{
 };
 
 pub fn draw_lobby(f: &mut Frame, area: Rect, config: &Config, lobby: &mut Lobby) {
-    let chunks = Layout::vertical([
-        Constraint::Length((MAX_LOBBY_SIZE * 3) as u16 + 2),
+    let player_count = lobby.encryptions.len();
+    let waiting_player_count = lobby.waiting_encryptions.len();
+    let mut constraints = vec![
+        Constraint::Length((player_count * 3) as u16 + 2),
         Constraint::Min(0),
-    ])
-    .split(area);
+    ];
+    if waiting_player_count > 0 {
+        constraints.push(Constraint::Length(waiting_player_count as u16 + 2));
+    }
+    let chunks = Layout::vertical(constraints).split(area);
 
     let time = match lobby.status {
         common::LobbyStatus::WaitingForPlayers => None,
@@ -44,7 +47,7 @@ pub fn draw_lobby(f: &mut Frame, area: Rect, config: &Config, lobby: &mut Lobby)
     // We split the lobby section into multiple chunks. Each chunks holds
     // one player and is exactly three rows high. This is due to the gauge +
     // bordered block we render per player.
-    let constraints = (0..lobby.encryptions.len()).map(|_| Constraint::Length(3));
+    let constraints = (0..player_count).map(|_| Constraint::Length(3));
     let inner_chunks = Layout::vertical(constraints).split(chunks[0].inner(Margin {
         vertical: 1,
         horizontal: 1,
@@ -70,7 +73,27 @@ pub fn draw_lobby(f: &mut Frame, area: Rect, config: &Config, lobby: &mut Lobby)
         f.render_widget(gauge, inner_chunks[i]);
     }
     f.render_widget(block, chunks[0]);
+
     draw_lobby_commands(f, config, chunks[1], lobby);
+
+    if waiting_player_count > 0 {
+        let encrypted_names = lobby.waiting_encryptions.values().map(
+            |Encryption {
+                 action: _,
+                 index,
+                 value,
+             }| {
+                value
+                    .chars()
+                    .enumerate()
+                    .map(|(i, c)| if i < *index { c } else { get_random_symbol() })
+                    .collect::<String>()
+            },
+        );
+        let waiting_players =
+            List::new(encrypted_names).block(Block::bordered().title("Waiting room"));
+        f.render_widget(waiting_players, chunks[2]);
+    }
 }
 
 fn draw_lobby_commands(f: &mut Frame, config: &Config, area: Rect, lobby: &Lobby) {

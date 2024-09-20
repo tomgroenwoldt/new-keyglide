@@ -53,6 +53,7 @@ pub struct Lobby {
     pub players: BTreeMap<Uuid, Player>,
     pub local_player: Option<Uuid>,
     pub encryptions: BTreeMap<Uuid, Encryption>,
+    pub waiting_encryptions: BTreeMap<Uuid, Encryption>,
     pub chat: Chat,
     pub ws_tx: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
     pub tx: UnboundedSender<LobbyMessage>,
@@ -101,6 +102,7 @@ impl Lobby {
         debug!("{:?}", lobby_information);
 
         let mut encryptions = BTreeMap::new();
+        let mut waiting_encryptions = BTreeMap::new();
         for (id, player) in lobby_information.players.iter() {
             let mut encryption = Encryption {
                 action: EncryptionAction::Joined,
@@ -113,7 +115,11 @@ impl Lobby {
             {
                 encryption.value.push_str(" (owner)");
             }
-            encryptions.insert(*id, encryption);
+            if player.waiting {
+                waiting_encryptions.insert(*id, encryption);
+            } else {
+                encryptions.insert(*id, encryption);
+            }
         }
 
         let mut editor = Editor::new(
@@ -138,6 +144,7 @@ impl Lobby {
             players: lobby_information.players,
             local_player: None,
             encryptions,
+            waiting_encryptions,
             chat: Chat::new(tx.clone()),
             ws_tx,
             tx,
@@ -182,7 +189,11 @@ impl Lobby {
                     index: 0,
                     value: player.name.clone(),
                 };
-                self.encryptions.insert(player.id, encryption);
+                if player.waiting {
+                    self.waiting_encryptions.insert(player.id, encryption);
+                } else {
+                    self.encryptions.insert(player.id, encryption);
+                }
                 self.players.insert(player.id, player);
             }
             LobbyMessage::PlayerLeft(id) => {
@@ -193,7 +204,11 @@ impl Lobby {
                     error!("Tried to remove a non-existent player with ID {}.", id);
                 }
 
-                if let Some(encryption) = self.encryptions.get_mut(&id) {
+                if let Some(encryption) = self
+                    .encryptions
+                    .get_mut(&id)
+                    .or(self.waiting_encryptions.get_mut(&id))
+                {
                     encryption.index = encryption.value.len() - 1;
                     encryption.action = EncryptionAction::Left;
                 }
@@ -210,7 +225,11 @@ impl Lobby {
                 info!("Received local player ID {} from the backend.", id);
                 self.local_player = Some(id);
 
-                if let Some(local_player) = self.encryptions.get_mut(&id) {
+                if let Some(local_player) = self
+                    .encryptions
+                    .get_mut(&id)
+                    .or(self.waiting_encryptions.get_mut(&id))
+                {
                     local_player.value.push_str(" (you)");
                 }
             }
@@ -352,8 +371,11 @@ impl Lobby {
 
     pub fn on_tick(&mut self) {
         let mut encryptions_to_delete = vec![];
-
-        for (id, encryption) in self.encryptions.iter_mut() {
+        for (id, encryption) in self
+            .encryptions
+            .iter_mut()
+            .chain(self.waiting_encryptions.iter_mut())
+        {
             match encryption.action {
                 EncryptionAction::Joined => {
                     if encryption.index < encryption.value.len() {
@@ -368,7 +390,9 @@ impl Lobby {
             }
         }
         for id in encryptions_to_delete {
-            self.encryptions.remove(&id);
+            self.encryptions
+                .remove(&id)
+                .or(self.waiting_encryptions.remove(&id));
         }
     }
 
