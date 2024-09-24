@@ -20,7 +20,7 @@ pub struct KeyBindings {
 impl KeyBindings {
     pub fn validate(&self) -> Result<()> {
         if self.children_have_duplicates() {
-            // TODO: Change this error when working on https://github.com/tomgroenwoldt/new-keyglide/issues/25.
+            // TODO: Change this error when working on https://github.com/tomgroenwoldt/keyglide/issues/25.
             return Err(anyhow!("Duplicate key_bindings..."));
         }
 
