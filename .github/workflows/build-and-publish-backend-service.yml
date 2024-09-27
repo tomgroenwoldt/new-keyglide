@@ -1,4 +1,4 @@
-name: Build and publish backend
+name: Build and publish service
 on:
   push:
     branches:
@@ -10,10 +10,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-backend
+  IMAGE_NAME: ${{ github.repository }}-service
 
 jobs:
-  build-backend:
+  build-service:
     runs-on: ubuntu-latest
     permissions:
       contents: read
