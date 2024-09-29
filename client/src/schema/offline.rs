@@ -31,7 +31,12 @@ impl Offline {
     pub async fn try_reconnect(&self) -> Result<()> {
         debug!("Try reconnect to backend service.");
 
-        let Ok(response) = self.client.get("http://127.0.0.1:3030/health").send().await else {
+        let Ok(response) = self
+            .client
+            .get("http://37.27.80.205:3030/health")
+            .send()
+            .await
+        else {
             error!("Backend service unreachable.");
             // TODO: Return an error here.
             return Ok(());

@@ -1,0 +1,11 @@
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - fail2ban
+runcmd:
+  - systemctl enable --now docker
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+  - docker pull ghcr.io/tomgroenwoldt/keyglide-service:main
+  - docker run -p 3030:3030 ghcr.io/tomgroenwoldt/keyglide-service:main

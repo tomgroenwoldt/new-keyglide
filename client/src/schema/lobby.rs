@@ -80,11 +80,11 @@ impl Lobby {
         app_size: Size,
     ) -> Result<Self> {
         // First, fetch lobby information of the lobby we want to join.
-        let url = format!("http://127.0.0.1:3030/lobbies/{}", join_mode);
+        let url = format!("http://37.27.80.205:3030/lobbies/{}", join_mode);
         let lobby_information = reqwest::get(url).await?.json::<LobbyInformation>().await?;
 
         // Connect to lobby with given join mode.
-        let url = format!("ws://127.0.0.1:3030/players/{}", lobby_information.id);
+        let url = format!("ws://37.27.80.205:3030/players/{}", lobby_information.id);
         let (ws_stream, _) = connect_async(url).await?;
 
         // Setup messaging channels.
