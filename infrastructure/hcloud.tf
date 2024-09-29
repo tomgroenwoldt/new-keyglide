@@ -32,11 +32,21 @@ resource "hcloud_firewall" "myfirewall" {
       "::/0"
     ]
   }
+  # Allow SSH
+  rule {
+    direction = "in"
+    protocol  = "tcp"
+    port      = "22"
+    source_ips = [
+      "0.0.0.0/0",
+      "::/0"
+    ]
+  }
   # Allow communication to backend
   rule {
     direction = "in"
     protocol  = "tcp"
-    port      = "3000"
+    port      = "3030"
     source_ips = [
       "0.0.0.0/0",
       "::/0"
