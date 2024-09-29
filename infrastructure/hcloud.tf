@@ -2,13 +2,12 @@ variable "hcloud_token" {
     type = string
 }
 
-# Configure the Hetzner Cloud Provider
 provider "hcloud" {
     token = "${var.hcloud_token}"
 }
 
-# Create a server
 resource "hcloud_server" "web" {
+  # TODO: Name per review environment, maybe use branch names?
   name        = "keyglide"
   image       = "ubuntu-20.04"
   server_type = "cx22"
@@ -24,6 +23,7 @@ resource "hcloud_ssh_key" "default" {
 
 resource "hcloud_firewall" "myfirewall" {
   name = "my-firewall"
+  # Allow to ping server
   rule {
     direction = "in"
     protocol  = "icmp"
@@ -32,6 +32,7 @@ resource "hcloud_firewall" "myfirewall" {
       "::/0"
     ]
   }
+  # Allow communication to backend
   rule {
     direction = "in"
     protocol  = "tcp"
