@@ -34,5 +34,5 @@ async fn main() {
 
     // Serve routes.
     let routes = health.or(client_routes.or(player_routes.or(lobby_routes)));
-    warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(routes).run(([0, 0, 0, 0], 3030)).await;
 }
