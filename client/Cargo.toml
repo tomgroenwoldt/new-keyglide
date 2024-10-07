@@ -30,6 +30,6 @@ strum = { workspace = true }
 tokio = { version = "1.40.0", features = ["full"] }
 tokio-tungstenite = "0.24.0"
 toml = "0.8.19"
-tui-logger = { version = "0.13.1", features = ["crossterm"] }
+tui-logger = { version = "0.13.2", features = ["crossterm"] }
 tui-term = "0.1.13"
 uuid = "1.10.0"
